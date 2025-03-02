@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ExerciseProvider with ChangeNotifier {
   String? selectedCategory;
   String? selectedTargetMuscle;
-  String? selectedCountingType; // نوع شمارش
+  String? selectedCountingType;
   File? selectedImage;
   File? selectedVideo;
   bool isLoading = false;
@@ -19,7 +19,7 @@ class ExerciseProvider with ChangeNotifier {
   void setCategory(String category) {
     selectedCategory = category;
     selectedTargetMuscle = null;
-    selectedCountingType = null; // ریست نوع شمارش وقتی دسته عوض می‌شه
+    selectedCountingType = null;
     notifyListeners();
   }
 
@@ -29,7 +29,6 @@ class ExerciseProvider with ChangeNotifier {
   }
 
   void setCountingType(String? countingType) {
-    // تغییر به nullable
     selectedCountingType = countingType;
     notifyListeners();
   }
@@ -47,7 +46,7 @@ class ExerciseProvider with ChangeNotifier {
   void resetForm() {
     selectedCategory = null;
     selectedTargetMuscle = null;
-    selectedCountingType = null; // ریست نوع شمارش
+    selectedCountingType = null;
     selectedImage = null;
     selectedVideo = null;
     notifyListeners();
@@ -62,7 +61,8 @@ class ExerciseProvider with ChangeNotifier {
           .from('exercise_media')
           .getPublicUrl(path);
     } catch (e) {
-      throw Exception('خطا در آپلود فایل: $e');
+      debugPrint('❌ خطا در آپلود فایل: $e');
+      return null;
     }
   }
 
@@ -113,8 +113,8 @@ class ExerciseProvider with ChangeNotifier {
         name: name,
         coachUsername: coachUsername,
         description: description,
-        imageUrl: imageUrl,
-        videoUrl: videoUrl,
+        imageUrl: imageUrl ?? '',
+        videoUrl: videoUrl ?? '',
         countingType: selectedCountingType,
       );
 
@@ -132,37 +132,47 @@ class ExerciseProvider with ChangeNotifier {
   }
 
   Future<void> deleteExercise(String exerciseId, String coachUsername) async {
+    if (exerciseId.isEmpty) return;
+
     try {
       await _exerciseService.deleteExercise(exerciseId);
       _coachExercises.removeWhere((exercise) => exercise['id'] == exerciseId);
       notifyListeners();
     } catch (e) {
-      throw Exception('خطا در حذف تمرین: $e');
+      debugPrint('❌ خطا در حذف تمرین: $e');
     }
   }
 
   Future<void> fetchCoachExercises(String coachUsername) async {
+    if (coachUsername.isEmpty) return;
+
     try {
       final exercises = await _exerciseService.getExercises();
-      _coachExercises =
-          exercises
-              .where((exercise) => exercise.coachUsername == coachUsername)
-              .map((e) => e.toJson())
-              .toList()
-              .cast<Map<String, dynamic>>();
+      if (exercises.isNotEmpty) {
+        _coachExercises =
+            exercises
+                .where((exercise) => exercise.coachUsername == coachUsername)
+                .map((e) => e.toJson())
+                .toList()
+                .cast<Map<String, dynamic>>();
+      } else {
+        _coachExercises = [];
+      }
       notifyListeners();
     } catch (e) {
-      throw Exception('خطا در دریافت تمرینات: $e');
+      debugPrint('❌ خطا در دریافت تمرینات: $e');
     }
   }
 
-  // متد برای آپدیت تمرین (برای ادیت)
   Future<void> updateExercise(String id, Map<String, dynamic> updates) async {
     try {
       await _exerciseService.updateExercise(id, updates);
-      await fetchCoachExercises(updates['coach_username'] ?? ''); // ریفرش لیست
+      final String coachUsername = updates['coach_username'] ?? '';
+      if (coachUsername.isNotEmpty) {
+        await fetchCoachExercises(coachUsername);
+      }
     } catch (e) {
-      throw Exception('خطا در بروزرسانی تمرین: $e');
+      debugPrint('❌ خطا در بروزرسانی تمرین: $e');
     }
   }
 }

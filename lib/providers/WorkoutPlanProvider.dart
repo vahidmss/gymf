@@ -27,9 +27,13 @@ class WorkoutPlanProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final cachedData = prefs.getString(_localPlansKey);
       if (cachedData != null) {
-        final List<dynamic> decoded = jsonDecode(cachedData);
-        _plans = decoded.map((e) => WorkoutPlanModel.fromJson(e)).toList();
-        notifyListeners();
+        try {
+          final List<dynamic> decoded = jsonDecode(cachedData);
+          _plans = decoded.map((e) => WorkoutPlanModel.fromJson(e)).toList();
+          notifyListeners();
+        } catch (e) {
+          debugPrint('❌ خطا در بارگذاری کش برنامه‌های ورزشی: $e');
+        }
       }
     }
   }
@@ -38,10 +42,10 @@ class WorkoutPlanProvider with ChangeNotifier {
     final authProvider = Provider.of<AuthProvider>(_context, listen: false);
     if (_isAthlete(authProvider)) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _localPlansKey,
-        jsonEncode(_plans.map((e) => e.toJson()).toList()),
-      );
+      final newData = jsonEncode(_plans.map((e) => e.toJson()).toList());
+      if (prefs.getString(_localPlansKey) != newData) {
+        await prefs.setString(_localPlansKey, newData);
+      }
     }
   }
 
@@ -49,7 +53,6 @@ class WorkoutPlanProvider with ChangeNotifier {
     return authProvider.currentUser?.role == 'athlete';
   }
 
-  // متد جدید برای تبدیل یوزرنیم به ID
   Future<String?> getUserIdByUsername(String username) async {
     try {
       final response =
@@ -57,10 +60,11 @@ class WorkoutPlanProvider with ChangeNotifier {
               .from('auth.users')
               .select('id')
               .eq('username', username)
-              .single();
-      return response.isNotEmpty ? response['id'] as String : null;
+              .maybeSingle(); // اصلاح برای جلوگیری از کرش
+
+      return response?['id'] as String?;
     } catch (e) {
-      print('خطا در یافتن ID کاربر: $e');
+      debugPrint('❌ خطا در دریافت ID کاربر: $e');
       return null;
     }
   }
@@ -69,17 +73,21 @@ class WorkoutPlanProvider with ChangeNotifier {
     required String userId,
     required String planName,
     required String day,
-    String? assignedToUsername, // یوزرنیم شaگرد (اختیاری)
+    String? assignedToUsername,
     required String username,
     required String role,
     required List<WorkoutExerciseModel> exercises,
   }) async {
     try {
+      if (userId.isEmpty || planName.isEmpty) {
+        throw Exception('❌ اطلاعات برنامه ورزشی ناقص است.');
+      }
+
       String? assignedToId;
       if (assignedToUsername != null && assignedToUsername.isNotEmpty) {
         assignedToId = await getUserIdByUsername(assignedToUsername);
         if (assignedToId == null) {
-          throw Exception('یوزرنیم شaگرد پیدا نشد!');
+          throw Exception('❌ یوزرنیم شaگرد پیدا نشد!');
         }
       }
 
@@ -89,7 +97,7 @@ class WorkoutPlanProvider with ChangeNotifier {
         planName: planName,
         username: username,
         role: role,
-        assignedTo: assignedToId, // ذخیره ID شaگرد
+        assignedTo: assignedToId,
         day: day,
       );
       await _workoutPlanService.createPlan(plan, exercises);
@@ -98,21 +106,21 @@ class WorkoutPlanProvider with ChangeNotifier {
       notifyListeners();
       if (_isAthlete(authProvider)) await _saveLocalPlans();
     } catch (e) {
-      print('خطای دقیق در ایجاد برنامه: $e');
-      throw Exception('خطا در ایجاد برنامه: $e');
+      debugPrint('❌ خطا در ایجاد برنامه: $e');
     }
   }
 
   Future<void> fetchPlans(String userId) async {
     final authProvider = Provider.of<AuthProvider>(_context, listen: false);
+    if (userId.isEmpty) return;
+
     if (!_isAthlete(authProvider)) {
       try {
         final plans = await _workoutPlanService.getPlans(userId);
         _plans = plans;
         notifyListeners();
       } catch (e) {
-        print('خطای دقیق در دریافت برنامه‌ها: $e');
-        throw Exception('خطا در دریافت برنامه‌ها: $e');
+        debugPrint('❌ خطا در دریافت برنامه‌ها: $e');
       }
     } else {
       _loadLocalPlans();
@@ -133,8 +141,7 @@ class WorkoutPlanProvider with ChangeNotifier {
       }
       if (_isAthlete(authProvider)) await _saveLocalPlans();
     } catch (e) {
-      print('خطای دقیق در به‌روزرسانی برنامه: $e');
-      throw Exception('خطا در به‌روزرسانی برنامه: $e');
+      debugPrint('❌ خطا در به‌روزرسانی برنامه: $e');
     }
   }
 
@@ -146,8 +153,7 @@ class WorkoutPlanProvider with ChangeNotifier {
       notifyListeners();
       if (_isAthlete(authProvider)) await _saveLocalPlans();
     } catch (e) {
-      print('خطای دقیق در حذف برنامه: $e');
-      throw Exception('خطا در حذف برنامه: $e');
+      debugPrint('❌ خطا در حذف برنامه: $e');
     }
   }
 
@@ -155,8 +161,8 @@ class WorkoutPlanProvider with ChangeNotifier {
     try {
       return await _workoutPlanService.getPlanExercises(planId);
     } catch (e) {
-      print('خطای دقیق در دریافت تمرینات برنامه: $e');
-      throw Exception('خطا در دریافت تمرینات برنامه: $e');
+      debugPrint('❌ خطا در دریافت تمرینات برنامه: $e');
+      return [];
     }
   }
 }
