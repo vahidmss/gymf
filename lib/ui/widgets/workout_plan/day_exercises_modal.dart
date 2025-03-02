@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:gymf/data/models/workout_exercise_model.dart';
-import 'package:gymf/logic/workout_plan_logic.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/providers/exercise_provider.dart';
 import 'package:gymf/ui/widgets/custom_button.dart';
-import 'package:gymf/ui/widgets/custom_text_field.dart';
 import 'package:gymf/ui/widgets/exercise_row.dart';
 import 'package:flutter/scheduler.dart'; // اضافه کردن برای addPostFrameCallback
 import 'package:provider/provider.dart';
@@ -142,7 +140,7 @@ class _DayExercisesModalState extends State<DayExercisesModal> {
                   });
                 },
               );
-            }).toList(),
+            }),
             const SizedBox(height: 20),
             CustomButton(
               text: 'ثبت روز',

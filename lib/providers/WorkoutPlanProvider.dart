@@ -75,7 +75,7 @@ class WorkoutPlanProvider with ChangeNotifier {
     required List<WorkoutExerciseModel> exercises,
   }) async {
     try {
-      String? assignedToId = null;
+      String? assignedToId;
       if (assignedToUsername != null && assignedToUsername.isNotEmpty) {
         assignedToId = await getUserIdByUsername(assignedToUsername);
         if (assignedToId == null) {
