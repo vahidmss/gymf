@@ -5,6 +5,7 @@ import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/data/models/workout_plan_model.dart';
 import 'package:gymf/data/models/workout_exercise_model.dart';
 import 'package:gymf/providers/exercise_provider.dart';
+import 'package:google_fonts/google_fonts.dart'; // برای فونت‌ها
 
 class WorkoutPlanScreen extends StatefulWidget {
   const WorkoutPlanScreen({super.key});
@@ -13,7 +14,8 @@ class WorkoutPlanScreen extends StatefulWidget {
   _WorkoutPlanScreenState createState() => _WorkoutPlanScreenState();
 }
 
-class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
+class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
+    with SingleTickerProviderStateMixin {
   String? selectedPlan; // برنامه انتخاب‌شده
   bool isForMe = true; // برای خودم یا شaرد
   final TextEditingController planNameController = TextEditingController();
@@ -23,11 +25,29 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
     {'day': 'روز 1', 'exercises': []}, // تغییر به "روز 1" (فارسی)
   ];
   List<WorkoutExerciseModel> exercisesForDay = []; // لیست تمرینات هر روز
+  late AnimationController _animationController;
+  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
     _loadInitialData();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    planNameController.dispose();
+    studentUsernameController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadInitialData() async {
@@ -50,15 +70,9 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
           selectedPlan = workoutPlanProvider.plans.first.id;
         });
         _loadExercisesForDay('روز 1'); // تغییر به "روز 1" (فارسی)
+        _animationController.forward();
       }
     }
-  }
-
-  @override
-  void dispose() {
-    planNameController.dispose();
-    studentUsernameController.dispose();
-    super.dispose();
   }
 
   void _addExercise(int dayIndex) {
@@ -73,6 +87,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
         'reps': '',
         'countingType': '', // نوع شمارش (بعداً با انتخاب تمرین تنظیم می‌شه)
       });
+      _animationController.forward(from: 0);
     });
   }
 
@@ -82,6 +97,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
         'day': 'روز ${days.length + 1}',
         'exercises': [],
       }); // تغییر به "روز" (فارسی)
+      _animationController.forward(from: 0);
     });
   }
 
@@ -94,15 +110,13 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
 
     String? assignedToUsername =
         !isForMe ? studentUsernameController.text : null;
-    String? assignedToId = null;
+    String? assignedToId;
     if (assignedToUsername != null && assignedToUsername.isNotEmpty) {
       assignedToId = await workoutPlanProvider.getUserIdByUsername(
         assignedToUsername,
       );
       if (assignedToId == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('یوزرنیم شaرد پیدا نشد!')));
+        _showSnackBar('یوزرنیم شaرد پیدا نشد!');
         return;
       }
     }
@@ -129,9 +143,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
     setState(() {
       selectedPlan = workoutPlanProvider.plans.last.id;
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('برنامه با موفقیت ثبت شد!')));
+    _showSnackBar('برنامه با موفقیت ثبت شد!');
   }
 
   Future<void> _saveDay(int dayIndex) async {
@@ -148,14 +160,9 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
           days[dayIndex]['exercises']
               .map((exercise) {
                 if (exercise['exerciseId'] == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('لطفاً یک تمرین انتخاب کنید!'),
-                    ),
-                  );
+                  _showSnackBar('لطفاً یک تمرین انتخاب کنید!');
                   throw Exception('تمرین انتخاب نشده است.');
                 }
-                // تبدیل مقادیر به String و چک کردن null با اطمینان بیشتر
                 final exerciseId = (exercise['exerciseId'] as String?) ?? '';
                 final sets = (exercise['sets'] as String?) ?? '0';
                 final reps = (exercise['reps'] as String?) ?? '0';
@@ -163,37 +170,29 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                     (exercise['countingType'] as String?) ?? 'تعداد';
 
                 if (exerciseId.isEmpty || sets.isEmpty || reps.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('لطفاً همه فیلدها را پر کنید!'),
-                    ),
-                  );
+                  _showSnackBar('لطفاً همه فیلدها را پر کنید!');
                   throw Exception('فیلدها خالی هستند.');
                 }
 
                 return WorkoutExerciseModel(
                   planId: selectedPlan!,
-                  exerciseId: exerciseId, // حالا همیشه String هست
+                  exerciseId: exerciseId,
                   sets: int.tryParse(sets) ?? 0,
                   countingType: countingType,
                   reps: int.tryParse(reps) ?? 0,
-                  duration: null, // برای تایم، اگر نیاز باشه
-                  notes: '', // باید از TextField گرفته بشه
+                  duration: null,
+                  notes: '',
                   createdAt: DateTime.now(),
                 );
               })
               .toList()
-              .cast<
-                WorkoutExerciseModel
-              >(); // اضافه کردن cast برای تبدیل به List<WorkoutExerciseModel>
+              .cast<WorkoutExerciseModel>();
 
       await workoutPlanProvider.updatePlan(plan.copyWith(day: day), exercises);
       setState(() {
         exercisesForDay = exercises;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('روز با موفقیت ثبت شد!')));
+      _showSnackBar('روز با موفقیت ثبت شد!');
     }
   }
 
@@ -211,7 +210,6 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
             exercises
                 .where((e) => e.planId == selectedPlan && e.countingType == day)
                 .toList();
-        // به‌روزرسانی لیست exercises برای هر روز
         final dayIndex = days.indexWhere((d) => d['day'] == day);
         if (dayIndex != -1) {
           days[dayIndex]['exercises'] =
@@ -230,6 +228,19 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
     }
   }
 
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.poppins(color: Colors.white)),
+        backgroundColor: Colors.deepPurple.withOpacity(0.8),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -242,306 +253,522 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Workout Planner',
-          style: TextStyle(color: Colors.yellowAccent),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.black87, Colors.deepPurple.shade900],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.8],
         ),
-        backgroundColor: Colors.black87,
-        elevation: 0,
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.black87, Colors.grey.shade900],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(
+            'Workout Planner',
+            style: GoogleFonts.poppins(
+              color: Colors.yellowAccent,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
           ),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.yellowAccent),
+              onPressed: () {
+                // منطق تنظیمات (اختیاری)
+              },
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedPlan,
-                decoration: InputDecoration(
-                  labelText: 'Programs',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
-                  labelStyle: const TextStyle(color: Colors.yellowAccent),
-                ),
-                dropdownColor: Colors.black87,
-                style: const TextStyle(color: Colors.white),
-                iconEnabledColor: Colors.yellowAccent,
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: null,
-                    child: Text(
-                      '+',
-                      style: TextStyle(
-                        color: Colors.yellowAccent,
-                        fontSize: 20,
-                      ),
-                    ),
-                  ),
-                  ...workoutPlanProvider.plans.map(
-                    (plan) => DropdownMenuItem<String>(
-                      value: plan.id,
-                      child: Text(
-                        plan.planName,
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    selectedPlan = value;
-                    if (value == null) {
-                      planNameController.clear();
-                      isForMe = true;
-                      studentUsernameController.clear();
-                      days = [
-                        {'day': 'روز 1', 'exercises': []},
-                      ]; // ریست کردن روزها
-                      exercisesForDay.clear();
-                    } else {
-                      final plan = workoutPlanProvider.plans.firstWhere(
-                        (p) => p.id == value,
-                      );
-                      planNameController.text = plan.planName;
-                      isForMe = plan.assignedTo == null;
-                      studentUsernameController.text = plan.assignedTo ?? '';
-                      _loadExercisesForDay(plan.day); // لود تمرینات روز برنامه
-                    }
-                  });
-                },
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('For Me', style: TextStyle(color: Colors.white)),
-                  Switch(
-                    value: !isForMe,
-                    onChanged: (value) {
-                      setState(() {
-                        isForMe = !value;
-                        if (isForMe) studentUsernameController.clear();
-                      });
-                    },
-                    activeColor: Colors.yellowAccent,
-                  ),
-                ],
-              ),
-              if (!isForMe)
-                TextFormField(
-                  controller: studentUsernameController,
-                  decoration: InputDecoration(
-                    labelText: 'Student Username',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    labelStyle: const TextStyle(color: Colors.yellowAccent),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                ),
-              const SizedBox(height: 20),
-              if (selectedPlan == null)
-                ElevatedButton(
-                  onPressed: _savePlan,
-                  child: const Text(
-                    'Save Program',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellowAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                ),
-              ...days.asMap().entries.map((entry) {
-                int index = entry.key;
-                var day = entry.value;
-                return Card(
-                  color: Colors.grey.shade900,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 3,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          day['day'],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+        body: Container(
+          padding: const EdgeInsets.all(16.0),
+          child: AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _animation.value,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      FadeTransition(
+                        opacity: _animation,
+                        child: DropdownButtonFormField<String>(
+                          value: selectedPlan,
+                          decoration: InputDecoration(
+                            labelText: 'Programs',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(
+                                color: Colors.yellowAccent,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.1),
+                            labelStyle: GoogleFonts.poppins(
+                              color: Colors.yellowAccent,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                        ...day['exercises'].asMap().entries.map((
-                          exerciseEntry,
-                        ) {
-                          int exIndex = exerciseEntry.key;
-                          var exercise = exerciseEntry.value;
-                          return Column(
-                            children: [
-                              // دراپ‌داون با سرچ برای انتخاب تمرین از دیتابیس
-                              DropdownButtonFormField<String>(
-                                value: exercise['exerciseId'],
-                                decoration: InputDecoration(
-                                  labelText: 'Exercise',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(15),
+                          dropdownColor: Colors.black87,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                          iconEnabledColor: Colors.yellowAccent,
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text(
+                                '+',
+                                style: TextStyle(
+                                  color: Colors.yellowAccent,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            ...workoutPlanProvider.plans.map(
+                              (plan) => DropdownMenuItem<String>(
+                                value: plan.id,
+                                child: Text(
+                                  plan.planName,
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 16,
                                   ),
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.1),
-                                  labelStyle: const TextStyle(
+                                ),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              selectedPlan = value;
+                              if (value == null) {
+                                planNameController.clear();
+                                isForMe = true;
+                                studentUsernameController.clear();
+                                days = [
+                                  {'day': 'روز 1', 'exercises': []},
+                                ];
+                                exercisesForDay.clear();
+                              } else {
+                                final plan = workoutPlanProvider.plans
+                                    .firstWhere((p) => p.id == value);
+                                planNameController.text = plan.planName;
+                                isForMe = plan.assignedTo == null;
+                                studentUsernameController.text =
+                                    plan.assignedTo ?? '';
+                                _loadExercisesForDay(plan.day);
+                                _animationController.forward(from: 0);
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      FadeTransition(
+                        opacity: _animation,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'For Me',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Switch(
+                              value: !isForMe,
+                              onChanged: (value) {
+                                setState(() {
+                                  isForMe = !value;
+                                  if (isForMe)
+                                    studentUsernameController.clear();
+                                  _animationController.forward(from: 0);
+                                });
+                              },
+                              activeColor: Colors.yellowAccent,
+                              activeTrackColor: Colors.yellowAccent.withOpacity(
+                                0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!isForMe)
+                        FadeTransition(
+                          opacity: _animation,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: TextFormField(
+                              controller: studentUsernameController,
+                              decoration: InputDecoration(
+                                labelText: 'Student Username',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                  borderSide: BorderSide(
                                     color: Colors.yellowAccent,
                                   ),
                                 ),
-                                dropdownColor: Colors.black87,
-                                style: const TextStyle(color: Colors.white),
-                                iconEnabledColor: Colors.yellowAccent,
-                                items:
-                                    Provider.of<ExerciseProvider>(
-                                      context,
-                                      listen: false,
-                                    ).coachExercises.map((exercise) {
-                                      return DropdownMenuItem<String>(
-                                        value: exercise['id'],
-                                        child: Text(
-                                          '${exercise['name']} (${exercise['counting_type'] ?? 'تعداد'})',
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                      );
-                                    }).toList(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    days[index]['exercises'][exIndex]['exerciseId'] =
-                                        value;
-                                    final selectedExercise =
-                                        Provider.of<ExerciseProvider>(
-                                          context,
-                                          listen: false,
-                                        ).coachExercises.firstWhere(
-                                          (e) => e['id'] == value,
-                                        );
-                                    days[index]['exercises'][exIndex]['countingType'] =
-                                        selectedExercise['counting_type'] ??
-                                        'تعداد';
-                                  });
-                                },
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.1),
+                                labelStyle: GoogleFonts.poppins(
+                                  color: Colors.yellowAccent,
+                                  fontSize: 16,
+                                ),
                               ),
-                              const SizedBox(height: 10),
-                              Row(
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 20),
+                      if (selectedPlan == null)
+                        FadeTransition(
+                          opacity: _animation,
+                          child: ElevatedButton(
+                            onPressed: _savePlan,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.yellowAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 24,
+                              ),
+                              elevation: 8,
+                              shadowColor: Colors.yellowAccent.withOpacity(0.5),
+                            ),
+                            child: Text(
+                              'Save Program',
+                              style: GoogleFonts.poppins(
+                                color: Colors.black,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ...days.asMap().entries.map((entry) {
+                        int index = entry.key;
+                        var day = entry.value;
+                        return FadeTransition(
+                          opacity: _animation,
+                          child: Card(
+                            color: Colors.grey.shade900.withOpacity(0.9),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: Colors.yellowAccent.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            elevation: 6,
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      initialValue: exercise['sets'],
-                                      decoration: InputDecoration(
-                                        labelText: 'Sets',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            15,
-                                          ),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        day['day'],
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      keyboardType: TextInputType.number,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          days[index]['exercises'][exIndex]['sets'] =
-                                              value ?? '';
-                                        });
-                                      },
-                                    ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.expand_more,
+                                          color: Colors.yellowAccent,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {});
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: TextFormField(
-                                      initialValue: exercise['reps'],
-                                      decoration: InputDecoration(
-                                        labelText: 'Reps',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            15,
+                                  ...day['exercises'].asMap().entries.map((
+                                    exerciseEntry,
+                                  ) {
+                                    int exIndex = exerciseEntry.key;
+                                    var exercise = exerciseEntry.value;
+                                    return FadeTransition(
+                                      opacity: _animation,
+                                      child: Column(
+                                        children: [
+                                          DropdownButtonFormField<String>(
+                                            value: exercise['exerciseId'],
+                                            decoration: InputDecoration(
+                                              labelText: 'Exercise',
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(15),
+                                                borderSide: BorderSide(
+                                                  color: Colors.yellowAccent,
+                                                ),
+                                              ),
+                                              filled: true,
+                                              fillColor: Colors.white
+                                                  .withOpacity(0.1),
+                                              labelStyle: GoogleFonts.poppins(
+                                                color: Colors.yellowAccent,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            dropdownColor: Colors.black87,
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                            ),
+                                            iconEnabledColor:
+                                                Colors.yellowAccent,
+                                            items:
+                                                Provider.of<ExerciseProvider>(
+                                                  context,
+                                                  listen: false,
+                                                ).coachExercises.map((
+                                                  exercise,
+                                                ) {
+                                                  return DropdownMenuItem<
+                                                    String
+                                                  >(
+                                                    value: exercise['id'],
+                                                    child: Text(
+                                                      '${exercise['name']} (${exercise['counting_type'] ?? 'تعداد'})',
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            color: Colors.white,
+                                                            fontSize: 16,
+                                                          ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                            onChanged: (value) {
+                                              setState(() {
+                                                days[index]['exercises'][exIndex]['exerciseId'] =
+                                                    value;
+                                                final selectedExercise =
+                                                    Provider.of<
+                                                      ExerciseProvider
+                                                    >(
+                                                      context,
+                                                      listen: false,
+                                                    ).coachExercises.firstWhere(
+                                                      (e) => e['id'] == value,
+                                                    );
+                                                days[index]['exercises'][exIndex]['countingType'] =
+                                                    selectedExercise['counting_type'] ??
+                                                    'تعداد';
+                                              });
+                                            },
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: TextFormField(
+                                                  initialValue:
+                                                      exercise['sets'],
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Sets',
+                                                    border: OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            15,
+                                                          ),
+                                                      borderSide: BorderSide(
+                                                        color:
+                                                            Colors.yellowAccent,
+                                                      ),
+                                                    ),
+                                                    filled: true,
+                                                    fillColor: Colors.white
+                                                        .withOpacity(0.1),
+                                                    labelStyle:
+                                                        GoogleFonts.poppins(
+                                                          color:
+                                                              Colors
+                                                                  .yellowAccent,
+                                                          fontSize: 16,
+                                                        ),
+                                                  ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  style: GoogleFonts.poppins(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                  ),
+                                                  onChanged: (value) {
+                                                    setState(() {
+                                                      days[index]['exercises'][exIndex]['sets'] =
+                                                          value ?? '';
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: TextFormField(
+                                                  initialValue:
+                                                      exercise['reps'],
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Reps',
+                                                    border: OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            15,
+                                                          ),
+                                                      borderSide: BorderSide(
+                                                        color:
+                                                            Colors.yellowAccent,
+                                                      ),
+                                                    ),
+                                                    filled: true,
+                                                    fillColor: Colors.white
+                                                        .withOpacity(0.1),
+                                                    labelStyle:
+                                                        GoogleFonts.poppins(
+                                                          color:
+                                                              Colors
+                                                                  .yellowAccent,
+                                                          fontSize: 16,
+                                                        ),
+                                                  ),
+                                                  keyboardType:
+                                                      TextInputType.number,
+                                                  style: GoogleFonts.poppins(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                  ),
+                                                  onChanged: (value) {
+                                                    setState(() {
+                                                      days[index]['exercises'][exIndex]['reps'] =
+                                                          value ?? '';
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                  const SizedBox(height: 10),
+                                  FadeTransition(
+                                    opacity: _animation,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed: () => _addExercise(index),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.yellowAccent,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                              horizontal: 20,
+                                            ),
+                                            elevation: 8,
+                                            shadowColor: Colors.yellowAccent
+                                                .withOpacity(0.5),
+                                          ),
+                                          child: Text(
+                                            '+ Add Exercise',
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.black,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          days[index]['exercises'][exIndex]['reps'] =
-                                              value ?? '';
-                                        });
-                                      },
+                                        ElevatedButton(
+                                          onPressed: () => _saveDay(index),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.yellowAccent,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                              horizontal: 20,
+                                            ),
+                                            elevation: 8,
+                                            shadowColor: Colors.yellowAccent
+                                                .withOpacity(0.5),
+                                          ),
+                                          child: Text(
+                                            'Save Day',
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.black,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
-                          );
-                        }).toList(),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () => _addExercise(index),
-                          child: const Text(
-                            '+ Add Exercise',
-                            style: TextStyle(color: Colors.black),
+                            ),
                           ),
+                        );
+                      }),
+                      const SizedBox(height: 10),
+                      FadeTransition(
+                        opacity: _animation,
+                        child: ElevatedButton(
+                          onPressed: _addNewDay,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.yellowAccent,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(15),
                             ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 20,
+                            ),
+                            elevation: 8,
+                            shadowColor: Colors.yellowAccent.withOpacity(0.5),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () => _saveDay(index),
-                          child: const Text(
-                            'Save Day',
-                            style: TextStyle(color: Colors.black),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.yellowAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                          child: Text(
+                            '+ Add Day',
+                            style: GoogleFonts.poppins(
+                              color: Colors.black,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: _addNewDay,
-                child: const Text(
-                  '+ Add Day',
-                  style: TextStyle(color: Colors.black),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.yellowAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
