@@ -14,16 +14,24 @@ class WorkoutPlanProvider with ChangeNotifier {
 
   static const String _localPlansKey = 'athlete_workout_plans';
 
-  final BuildContext _context;
   final WorkoutPlanService _workoutPlanService = WorkoutPlanService();
+  AuthProvider? _authProvider;
 
-  WorkoutPlanProvider(this._context) {
+  WorkoutPlanProvider(BuildContext context) {
+    _authProvider = Provider.of<AuthProvider>(context, listen: false);
     _loadLocalPlans();
   }
 
+  void updateAuth(AuthProvider auth) {
+    _authProvider = auth;
+    _loadLocalPlans(); // ری‌لود برنامه‌ها با کاربر جدید
+    notifyListeners();
+  }
+
   Future<void> _loadLocalPlans() async {
-    final authProvider = Provider.of<AuthProvider>(_context, listen: false);
-    if (_isAthlete(authProvider)) {
+    if (_authProvider == null || _authProvider!.currentUser == null) return;
+
+    if (_isAthlete()) {
       final prefs = await SharedPreferences.getInstance();
       final cachedData = prefs.getString(_localPlansKey);
       if (cachedData != null) {
@@ -35,12 +43,13 @@ class WorkoutPlanProvider with ChangeNotifier {
           debugPrint('❌ خطا در بارگذاری کش برنامه‌های ورزشی: $e');
         }
       }
+    } else {
+      await fetchPlans(_authProvider!.userId ?? '');
     }
   }
 
   Future<void> _saveLocalPlans() async {
-    final authProvider = Provider.of<AuthProvider>(_context, listen: false);
-    if (_isAthlete(authProvider)) {
+    if (_isAthlete()) {
       final prefs = await SharedPreferences.getInstance();
       final newData = jsonEncode(_plans.map((e) => e.toJson()).toList());
       if (prefs.getString(_localPlansKey) != newData) {
@@ -49,8 +58,8 @@ class WorkoutPlanProvider with ChangeNotifier {
     }
   }
 
-  bool _isAthlete(AuthProvider authProvider) {
-    return authProvider.currentUser?.role == 'athlete';
+  bool _isAthlete() {
+    return _authProvider?.currentUser?.role == 'athlete';
   }
 
   Future<String?> getUserIdByUsername(String username) async {
@@ -60,7 +69,7 @@ class WorkoutPlanProvider with ChangeNotifier {
               .from('auth.users')
               .select('id')
               .eq('username', username)
-              .maybeSingle(); // اصلاح برای جلوگیری از کرش
+              .maybeSingle();
 
       return response?['id'] as String?;
     } catch (e) {
@@ -87,11 +96,10 @@ class WorkoutPlanProvider with ChangeNotifier {
       if (assignedToUsername != null && assignedToUsername.isNotEmpty) {
         assignedToId = await getUserIdByUsername(assignedToUsername);
         if (assignedToId == null) {
-          throw Exception('❌ یوزرنیم شaگرد پیدا نشد!');
+          throw Exception('❌ یوزرنیم شاگرد پیدا نشد!');
         }
       }
 
-      final authProvider = Provider.of<AuthProvider>(_context, listen: false);
       final plan = WorkoutPlanModel(
         userId: userId,
         planName: planName,
@@ -100,21 +108,21 @@ class WorkoutPlanProvider with ChangeNotifier {
         assignedTo: assignedToId,
         day: day,
       );
+
       await _workoutPlanService.createPlan(plan, exercises);
 
       _plans.add(plan);
       notifyListeners();
-      if (_isAthlete(authProvider)) await _saveLocalPlans();
+      if (_isAthlete()) await _saveLocalPlans();
     } catch (e) {
       debugPrint('❌ خطا در ایجاد برنامه: $e');
     }
   }
 
   Future<void> fetchPlans(String userId) async {
-    final authProvider = Provider.of<AuthProvider>(_context, listen: false);
     if (userId.isEmpty) return;
 
-    if (!_isAthlete(authProvider)) {
+    if (!_isAthlete()) {
       try {
         final plans = await _workoutPlanService.getPlans(userId);
         _plans = plans;
@@ -131,7 +139,6 @@ class WorkoutPlanProvider with ChangeNotifier {
     WorkoutPlanModel plan,
     List<WorkoutExerciseModel> exercises,
   ) async {
-    final authProvider = Provider.of<AuthProvider>(_context, listen: false);
     try {
       await _workoutPlanService.updatePlan(plan, exercises);
       final planIndex = _plans.indexWhere((p) => p.id == plan.id);
@@ -139,19 +146,18 @@ class WorkoutPlanProvider with ChangeNotifier {
         _plans[planIndex] = plan;
         notifyListeners();
       }
-      if (_isAthlete(authProvider)) await _saveLocalPlans();
+      if (_isAthlete()) await _saveLocalPlans();
     } catch (e) {
       debugPrint('❌ خطا در به‌روزرسانی برنامه: $e');
     }
   }
 
   Future<void> deletePlan(String planId) async {
-    final authProvider = Provider.of<AuthProvider>(_context, listen: false);
     try {
       await _workoutPlanService.deletePlan(planId);
       _plans.removeWhere((plan) => plan.id == planId);
       notifyListeners();
-      if (_isAthlete(authProvider)) await _saveLocalPlans();
+      if (_isAthlete()) await _saveLocalPlans();
     } catch (e) {
       debugPrint('❌ خطا در حذف برنامه: $e');
     }

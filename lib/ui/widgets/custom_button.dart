@@ -9,7 +9,7 @@ class CustomButton extends StatelessWidget {
   final Color textColor;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
-  final double elevation; // اضافه شد ✅
+  final double elevation;
 
   const CustomButton({
     super.key,
@@ -21,14 +21,14 @@ class CustomButton extends StatelessWidget {
     this.textColor = Colors.white,
     this.borderRadius = 12.0,
     this.padding = const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-    this.elevation = 0.0, // پیش‌فرض صفر
+    this.elevation = 0.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 200),
-      opacity: isLoading ? 0.6 : 1.0, // زمانی که دکمه لود می‌شود کمی محو شود
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
@@ -36,19 +36,37 @@ class CustomButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius),
           ),
-          backgroundColor: backgroundColor,
+          backgroundColor:
+              isLoading
+                  ? backgroundColor.withOpacity(0.7) // کم‌رنگ‌تر موقع لودینگ
+                  : backgroundColor,
           foregroundColor: textColor,
-          elevation: elevation, // اینو اضافه کردیم
+          elevation:
+              isLoading ? elevation / 2 : elevation, // کاهش سایه موقع لودینگ
         ),
         child:
             isLoading
-                ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.0,
-                  ),
+                ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: textColor,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'در حال بارگذاری...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: textColor.withOpacity(0.8),
+                      ),
+                    ),
+                  ],
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,

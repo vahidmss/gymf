@@ -145,19 +145,14 @@ class ExerciseProvider with ChangeNotifier {
 
   Future<void> fetchCoachExercises(String coachUsername) async {
     if (coachUsername.isEmpty) return;
-
     try {
       final exercises = await _exerciseService.getExercises();
-      if (exercises.isNotEmpty) {
-        _coachExercises =
-            exercises
-                .where((exercise) => exercise.coachUsername == coachUsername)
-                .map((e) => e.toJson())
-                .toList()
-                .cast<Map<String, dynamic>>();
-      } else {
-        _coachExercises = [];
-      }
+      _coachExercises =
+          exercises
+              .where((exercise) => exercise.coachUsername == coachUsername)
+              .map((e) => e.toJson())
+              .toList()
+              .cast<Map<String, dynamic>>();
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطا در دریافت تمرینات: $e');
