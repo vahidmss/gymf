@@ -1,39 +1,75 @@
-import 'package:uuid/uuid.dart';
+// workout_log_model.dart
+class WorkoutLog {
+  final String id;
+  final String exerciseId; // UUID تمرین (ارجاع به جدول exercises)
+  final String value; // مقدار واردشده (مثلاً "50 کیلوگرم")
+  final String countingType; // نوع شمارش (وزن، تعداد، یا تایم)
+  final String planId; // UUID برنامه (ارجاع به جدول workout_plans)
+  final String day; // نام روز (مثلاً "روز 1")
+  final String? notes; // توضیحات و نکات (اختیاری)
+  final DateTime createdAt;
+  final DateTime? updatedAt;
 
-class WorkoutLogModel {
-  String id;
-  String userId;
-  String exerciseId;
-  String planId;
-  DateTime date;
-  String? notes;
-
-  WorkoutLogModel({
-    String? id,
-    required this.userId,
+  WorkoutLog({
+    required this.id,
     required this.exerciseId,
+    required this.value,
+    required this.countingType,
     required this.planId,
-    DateTime? date,
+    required this.day,
     this.notes,
-  }) : id = id ?? const Uuid().v4(),
-       date = date ?? DateTime.now();
+    required this.createdAt,
+    this.updatedAt,
+  });
 
-  factory WorkoutLogModel.fromJson(Map<String, dynamic> json) =>
-      WorkoutLogModel(
-        id: json['id'],
-        userId: json['user_id'],
-        exerciseId: json['exercise_id'],
-        planId: json['plan_id'],
-        date: DateTime.parse(json['date']),
-        notes: json['notes'],
-      );
+  factory WorkoutLog.fromJson(Map<String, dynamic> json) {
+    // اعتبارسنجی فرمت UUID برای id، exerciseId، و planId
+    if (json['id'] != null &&
+        !RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ).hasMatch(json['id'])) {
+      throw Exception('فرمت id نامعتبر است!');
+    }
+    if (json['exercise_id'] != null &&
+        !RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ).hasMatch(json['exercise_id'])) {
+      throw Exception('فرمت exercise_id نامعتبر است!');
+    }
+    if (json['plan_id'] != null &&
+        !RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ).hasMatch(json['plan_id'])) {
+      throw Exception('فرمت plan_id نامعتبر است!');
+    }
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'user_id': userId,
-    'exercise_id': exerciseId,
-    'plan_id': planId,
-    'date': date.toIso8601String(),
-    'notes': notes,
-  };
+    return WorkoutLog(
+      id: json['id'],
+      exerciseId: json['exercise_id'],
+      value: json['value'],
+      countingType: json['counting_type'],
+      planId: json['plan_id'],
+      day: json['day'],
+      notes: json['notes'],
+      createdAt: DateTime.parse(json['created_at']),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.parse(json['updated_at'])
+              : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'exercise_id': exerciseId,
+      'value': value,
+      'counting_type': countingType,
+      'plan_id': planId,
+      'day': day,
+      'notes': notes,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
+    };
+  }
 }

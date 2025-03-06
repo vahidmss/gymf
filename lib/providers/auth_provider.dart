@@ -10,15 +10,7 @@ import 'dart:async';
 class AuthProvider with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
   final OtpService _otpService = OtpService();
-  Future<void> initialize() async {
-    if (_supabase.auth.currentSession != null) {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId != null) {
-        _currentUser = await getUserData(userId);
-        notifyListeners();
-      }
-    }
-  }
+  final Uuid _uuid = const Uuid();
 
   UserModel? _currentUser;
   UserModel? get currentUser => _currentUser;
@@ -29,23 +21,78 @@ class AuthProvider with ChangeNotifier {
 
   late StreamSubscription<AuthState> _authSubscription;
 
-  /// چک کردن وضعیت لاگین کاربر
-  Future<bool> checkAuthStatus() async {
-    return _supabase.auth.currentSession != null;
+  AuthProvider() {
+    _listenToAuthState();
   }
 
-  /// تنظیم کد OTP
+  Future<void> initialize() async {
+    print('🔄 مقداردهی اولیه AuthProvider...');
+    try {
+      if (_supabase.auth.currentSession != null) {
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId != null) {
+          print('🔑 سشن موجود است، بارگذاری اطلاعات کاربر با ID: $userId');
+          _currentUser = await getUserData(userId);
+          if (_currentUser != null) {
+            print('✅ کاربر با موفقیت بارگذاری شد: ${_currentUser!.username}');
+          } else {
+            print(
+              '⚠️ کاربر در دیتابیس یافت نشد، ممکن است نیاز به تکمیل پروفایل داشته باشد.',
+            );
+          }
+        } else {
+          print('⚠️ سشن وجود دارد اما userId یافت نشد.');
+        }
+      } else {
+        print('🔑 سشن وجود ندارد، کاربر وارد نشده است.');
+      }
+      notifyListeners();
+    } catch (e) {
+      print('❌ خطا در مقداردهی اولیه AuthProvider: $e');
+    }
+  }
+
+  Future<bool> checkAuthStatus() async {
+    try {
+      print('🔄 بررسی وضعیت سشن...');
+      final session = _supabase.auth.currentSession;
+      if (session == null) {
+        print('🔑 سشن وجود ندارد.');
+        return false;
+      }
+
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        print('⚠️ سشن وجود دارد اما userId یافت نشد.');
+        return false;
+      }
+
+      print('✅ سشن معتبر است، userId: $userId');
+      _currentUser = await getUserData(userId);
+      if (_currentUser == null) {
+        print(
+          '⚠️ کاربر در دیتابیس یافت نشد، ممکن است نیاز به تکمیل پروفایل داشته باشد.',
+        );
+        return false;
+      }
+
+      print('✅ کاربر با موفقیت بارگذاری شد: ${_currentUser!.username}');
+      return true;
+    } catch (e) {
+      print('❌ خطا در بررسی وضعیت سشن: $e');
+      return false;
+    }
+  }
+
   void setOtpCode(String code) {
     _otpCode = code;
     notifyListeners();
   }
 
-  /// هش کردن رمز عبور
   String _hashPassword(String password) {
     return sha256.convert(utf8.encode(password)).toString();
   }
 
-  /// ثبت‌نام با شماره موبایل و OTP
   Future<void> signUpWithPhone(
     String phone,
     String username,
@@ -53,6 +100,7 @@ class AuthProvider with ChangeNotifier {
     String role,
   ) async {
     try {
+      print('🔄 ثبت‌نام با شماره موبایل: $phone');
       if (!await isUsernameUnique(username)) {
         throw Exception('این یوزرنیم قبلاً استفاده شده است.');
       }
@@ -61,7 +109,7 @@ class AuthProvider with ChangeNotifier {
       await _supabase.auth.signInWithOtp(phone: phone);
 
       final hashedPassword = _hashPassword(password);
-      final userId = const Uuid().v4();
+      final userId = _uuid.v4();
 
       _currentUser = UserModel(
         userId: userId,
@@ -73,15 +121,17 @@ class AuthProvider with ChangeNotifier {
         password: hashedPassword,
       );
 
-      await saveUserData(_currentUser!); // ذخیره موقت در دیتابیس
+      await saveUserData(_currentUser!);
+      print('✅ کاربر با موفقیت ثبت شد: $username');
     } catch (e) {
+      print('❌ خطا در ثبت‌نام: $e');
       throw Exception('خطا در ثبت‌نام: $e');
     }
   }
 
-  /// تأیید OTP و ورود
   Future<void> verifyOtp(String phone, String enteredCode) async {
     try {
+      print('🔄 تأیید OTP برای شماره: $phone');
       final authResponse = await _supabase.auth.verifyOTP(
         type: OtpType.sms,
         phone: phone,
@@ -103,14 +153,16 @@ class AuthProvider with ChangeNotifier {
 
       _otpCode = null;
       notifyListeners();
+      print('✅ OTP با موفقیت تأیید شد.');
     } catch (e) {
+      print('❌ خطا در تأیید کد: $e');
       throw Exception('خطا در تأیید کد: $e');
     }
   }
 
-  /// ورود با گوگل
   Future<void> signInWithGoogle(BuildContext context) async {
     try {
+      print('🔄 ورود با گوگل...');
       _authSubscription = _supabase.auth.onAuthStateChange.listen((data) async {
         final session = data.session;
         if (session == null) return;
@@ -140,35 +192,42 @@ class AuthProvider with ChangeNotifier {
         redirectTo: 'gymf://auth/callback',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")),
-      );
+      print('❌ خطا در ورود با گوگل: $e');
+      throw Exception('خطا در ورود با گوگل: $e');
     }
   }
 
-  /// ورود با یوزرنیم و پسورد
   Future<void> signInWithUsername(String username, String password) async {
     try {
+      print('🔄 ورود با یوزرنیم: $username');
       final userData = await getUserDataByUsername(username);
       if (userData == null || _hashPassword(password) != userData.password) {
         throw Exception('یوزرنیم یا رمز عبور اشتباه است.');
       }
 
-      final authResponse = await _supabase.auth.signInWithPassword(
-        email: '$username@gymf.com', // ایمیل فرضی
-        password: password,
-      );
+      // به جای استفاده از ایمیل فرضی، مستقیماً کاربر رو تأیید می‌کنیم
+      // و سشن رو به صورت دستی ایجاد می‌کنیم
+      final phone = userData.phone;
+      if (phone.isEmpty) {
+        throw Exception(
+          'شماره موبایل کاربر یافت نشد، لطفاً با گوگل وارد شوید.',
+        );
+      }
 
+      // ورود با شماره موبایل به جای ایمیل
+      await _supabase.auth.signInWithOtp(phone: phone);
       _currentUser = userData;
       notifyListeners();
+      print('✅ ورود با موفقیت انجام شد.');
     } catch (e) {
+      print('❌ خطا در ورود: $e');
       throw Exception('خطا در ورود: $e');
     }
   }
 
-  /// تکمیل پروفایل بعد از ورود با گوگل یا OTP
   Future<void> completeProfile(String username, String role) async {
     try {
+      print('🔄 تکمیل پروفایل برای یوزرنیم: $username');
       if (!await isUsernameUnique(username)) {
         throw Exception('این یوزرنیم قبلاً استفاده شده است.');
       }
@@ -192,67 +251,104 @@ class AuthProvider with ChangeNotifier {
       await saveUserData(_currentUser!);
 
       notifyListeners();
+      print('✅ پروفایل با موفقیت تکمیل شد.');
     } catch (e) {
+      print('❌ خطا در تکمیل پروفایل: $e');
       throw Exception('خطا در تکمیل پروفایل: $e');
     }
   }
 
-  /// بررسی یکتا بودن یوزرنیم
   Future<bool> isUsernameUnique(String username) async {
-    final response =
-        await _supabase
-            .from('users')
-            .select()
-            .eq('username', username)
-            .maybeSingle();
-    return response == null;
-  }
-
-  /// ذخیره اطلاعات کاربر در دیتابیس
-  Future<void> saveUserData(UserModel user) async {
-    print("📌 Data before upsert: ${user.toMap()}");
-    await _supabase.from('users').upsert(user.toMap());
-  }
-
-  /// دریافت اطلاعات کاربر با `userId`
-  Future<UserModel?> getUserData(String userId) async {
-    final response =
-        await _supabase.from('users').select().eq('id', userId).maybeSingle();
-    return response != null ? UserModel.fromMap(response) : null;
-  }
-
-  /// دریافت اطلاعات کاربر با `username`
-  Future<UserModel?> getUserDataByUsername(String username) async {
-    final response =
-        await _supabase
-            .from('users')
-            .select()
-            .eq('username', username)
-            .maybeSingle();
-    return response != null ? UserModel.fromMap(response) : null;
-  }
-
-  /// دریافت اطلاعات کاربر با شماره موبایل
-  Future<UserModel?> getUserDataByPhone(String phone) async {
-    final response =
-        await _supabase.from('users').select().eq('phone', phone).maybeSingle();
-    return response != null ? UserModel.fromMap(response) : null;
-  }
-
-  /// تازه‌سازی اطلاعات کاربر
-  Future<void> refreshUser() async {
-    final session = _supabase.auth.currentSession;
-    if (session != null) {
-      await _loadCurrentUser(session.user.id);
-    } else {
-      _currentUser = null;
-      notifyListeners();
+    try {
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('username', username)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
+      return response == null;
+    } catch (e) {
+      print('❌ خطا در بررسی یوزرنیم: $e');
+      throw Exception('خطا در بررسی یوزرنیم: $e');
     }
   }
 
-  /// گوش دادن به تغییرات وضعیت تأیید هویت
+  Future<void> saveUserData(UserModel user) async {
+    try {
+      print("📌 Data before upsert: ${user.toMap()}");
+      await _supabase
+          .from('users')
+          .upsert(user.toMap())
+          .timeout(const Duration(seconds: 10));
+      print('✅ اطلاعات کاربر با موفقیت ذخیره شد.');
+    } catch (e) {
+      print('❌ خطا در ذخیره اطلاعات کاربر: $e');
+      throw Exception('خطا در ذخیره اطلاعات: $e');
+    }
+  }
+
+  Future<UserModel?> getUserData(String id) async {
+    try {
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('id', id)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
+      return response != null ? UserModel.fromMap(response) : null;
+    } catch (e) {
+      print('❌ خطا در دریافت اطلاعات کاربر: $e');
+      return null;
+    }
+  }
+
+  Future<UserModel?> getUserDataByUsername(String username) async {
+    try {
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('username', username)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
+      return response != null ? UserModel.fromMap(response) : null;
+    } catch (e) {
+      print('❌ خطا در دریافت اطلاعات کاربر با یوزرنیم: $e');
+      return null;
+    }
+  }
+
+  Future<UserModel?> getUserDataByPhone(String phone) async {
+    try {
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('phone', phone)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
+      return response != null ? UserModel.fromMap(response) : null;
+    } catch (e) {
+      print('❌ خطا در دریافت اطلاعات کاربر با شماره: $e');
+      return null;
+    }
+  }
+
+  Future<void> refreshUser() async {
+    try {
+      final session = _supabase.auth.currentSession;
+      if (session != null) {
+        await _loadCurrentUser(session.user.id);
+      } else {
+        _currentUser = null;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('❌ خطا در تازه‌سازی اطلاعات کاربر: $e');
+    }
+  }
+
   void _listenToAuthState() {
     _authSubscription = _supabase.auth.onAuthStateChange.listen((data) async {
+      print('🔄 تغییر وضعیت احراز هویت: ${data.event}');
       final session = data.session;
       if (session != null) {
         await _loadCurrentUser(session.user.id);
@@ -263,23 +359,22 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
-  /// لود اطلاعات کاربر با `userId`
-  Future<void> _loadCurrentUser(String userId) async {
+  Future<void> _loadCurrentUser(String id) async {
     try {
-      final response =
-          await _supabase
-              .from('users')
-              .select()
-              .eq('user_id', userId)
-              .maybeSingle();
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('id', id)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
       _currentUser = response != null ? UserModel.fromMap(response) : null;
       notifyListeners();
+      print('✅ کاربر بارگذاری شد: ${_currentUser?.username}');
     } catch (e) {
-      print('خطا در لود کاربر: $e');
+      print('❌ خطا در لود کاربر: $e');
     }
   }
 
-  /// منتظر ماندن برای تکمیل ورود
   Future<void> _waitForUser() async {
     int retries = 20;
     while (_supabase.auth.currentUser == null && retries > 0) {
@@ -288,7 +383,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// لغو `StreamSubscription` برای جلوگیری از نشت حافظه
   @override
   void dispose() {
     _authSubscription.cancel();

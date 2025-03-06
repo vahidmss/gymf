@@ -5,12 +5,14 @@ class ExerciseModel {
   final String category;
   final String? targetMuscle; // فقط برای تمرین‌های قدرتی
   final String name;
-  final String coachUsername;
+  final String
+  createdBy; // تغییر از coachUsername به createdBy (UUID به‌صورت String)
   final String? description;
   final String? imageUrl;
   final String? videoUrl;
-  final String? countingType; // جدید: نوع شمارش (تعدادی، kg، یا زمان)
+  final String? countingType; // نوع شمارش (تعدادی، kg، یا زمان)
   final DateTime createdAt;
+  final DateTime? updatedAt; // اضافه کردن updatedAt برای هماهنگی با دیتابیس
 
   // سازنده اصلی
   ExerciseModel({
@@ -18,12 +20,13 @@ class ExerciseModel {
     required this.category,
     this.targetMuscle,
     required this.name,
-    required this.coachUsername,
+    required this.createdBy, // تغییر از coachUsername به createdBy
     this.description,
     this.imageUrl,
     this.videoUrl,
     this.countingType,
     DateTime? createdAt,
+    this.updatedAt,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now();
 
@@ -34,7 +37,8 @@ class ExerciseModel {
       category: json['category'] ?? 'بدون دسته‌بندی',
       targetMuscle: json['target_muscle'],
       name: json['name'] ?? 'بدون نام',
-      coachUsername: json['coach_username'] ?? 'ناشناخته',
+      createdBy:
+          json['created_by'] ?? '', // تغییر از coach_username به created_by
       description: json['description'],
       imageUrl: json['image_url'],
       videoUrl: json['video_url'],
@@ -43,6 +47,10 @@ class ExerciseModel {
           json['created_at'] != null
               ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
               : DateTime.now(),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.tryParse(json['updated_at'])
+              : null,
     );
   }
 
@@ -53,12 +61,13 @@ class ExerciseModel {
       'category': category,
       'target_muscle': targetMuscle,
       'name': name,
-      'coach_username': coachUsername,
+      'created_by': createdBy, // تغییر از coach_username به created_by
       'description': description,
       'image_url': imageUrl,
       'video_url': videoUrl,
       'counting_type': countingType,
       'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
@@ -68,30 +77,33 @@ class ExerciseModel {
     String? category,
     String? targetMuscle,
     String? name,
-    String? coachUsername,
+    String? createdBy, // تغییر از coachUsername به createdBy
     String? description,
     String? imageUrl,
     String? videoUrl,
     String? countingType,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return ExerciseModel(
       id: id ?? this.id,
       category: category ?? this.category,
       targetMuscle: targetMuscle ?? this.targetMuscle,
       name: name ?? this.name,
-      coachUsername: coachUsername ?? this.coachUsername,
+      createdBy:
+          createdBy ?? this.createdBy, // تغییر از coachUsername به createdBy
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       videoUrl: videoUrl ?? this.videoUrl,
       countingType: countingType ?? this.countingType,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
   // متد نمایش اطلاعات مدل در لاگ‌ها
   @override
   String toString() {
-    return 'ExerciseModel(id: $id, category: $category, targetMuscle: $targetMuscle, name: $name, coachUsername: $coachUsername, countingType: $countingType, createdAt: $createdAt)';
+    return 'ExerciseModel(id: $id, category: $category, targetMuscle: $targetMuscle, name: $name, createdBy: $createdBy, countingType: $countingType, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }

@@ -1,35 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:gymf/data/models/workout_plan_model.dart';
-import 'package:gymf/data/models/workout_exercise_model.dart';
+import 'package:gymf/core/services/WorkoutPlanService.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
-import 'package:gymf/providers/auth_provider.dart';
-import 'package:gymf/providers/exercise_provider.dart';
-import 'package:gymf/ui/widgets/custom_button.dart';
-import 'package:gymf/ui/widgets/custom_text_field.dart';
 import 'package:provider/provider.dart';
-
-class WorkoutApp extends StatelessWidget {
-  const WorkoutApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: const WorkoutPlanScreen(),
-      theme: ThemeData(
-        primaryColor: Colors.yellow,
-        scaffoldBackgroundColor: Colors.black,
-        cardColor: Colors.grey[900],
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: Colors.white),
-          titleLarge: TextStyle(
-            color: Colors.yellow,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-}
+import 'package:gymf/data/models/workout_plan_model.dart';
+import 'package:gymf/providers/auth_provider.dart';
+import 'package:uuid/uuid.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class WorkoutPlanScreen extends StatefulWidget {
   const WorkoutPlanScreen({super.key});
@@ -39,383 +15,260 @@ class WorkoutPlanScreen extends StatefulWidget {
 }
 
 class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
-  String? selectedPlan;
-  bool isForStudent = false;
-  String? studentUsername;
-  String planName = '';
-  List<WorkoutDay> workoutDays = [];
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _planNameController = TextEditingController();
-  bool isLoading = false; // اضافه شد
+  final TextEditingController _notesController = TextEditingController();
+  final WorkoutPlanService _workoutPlanService = WorkoutPlanService();
+  final Uuid _uuid = const Uuid();
+
+  List<WorkoutDay> _days = [
+    WorkoutDay(dayName: 'روز 1', exercises: []),
+  ]; // لیست اولیه روزها
+  String? _selectedAssignedToUsername; // یوزرنیم گیرنده (اختیاری)
+  String? _currentUserId; // شناسه کاربر فعلی
+  String? _currentUsername; // یوزرنیم کاربر فعلی
+  String? _currentRole; // نقش کاربر (coach یا athlete)
 
   @override
   void initState() {
     super.initState();
-    workoutDays.add(WorkoutDay(dayName: 'روز ۱'));
-    _fetchExercises(); // اضافه شد
-  }
-
-  Future<void> _fetchExercises() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final exerciseProvider = Provider.of<ExerciseProvider>(
-      context,
-      listen: false,
-    );
-    await exerciseProvider.fetchCoachExercises(
-      authProvider.currentUser?.username ?? 'test_coach',
-    );
+    _currentUserId = authProvider.userId;
+    _currentUsername = authProvider.currentUser?.username;
+    _currentRole = authProvider.currentUser?.role;
   }
 
-  void addNewPlan() {
+  void _addDay() {
     setState(() {
-      selectedPlan = null;
-      workoutDays.clear();
-      workoutDays.add(WorkoutDay(dayName: 'روز ۱'));
-      _planNameController.clear();
-      isForStudent = false;
-      studentUsername = null;
+      _days.add(WorkoutDay(dayName: 'روز ${_days.length + 1}', exercises: []));
     });
   }
 
-  void addWorkoutDay() {
+  void _removeDay(int index) {
+    if (_days.length > 1) {
+      setState(() {
+        _days.removeAt(index);
+      });
+    }
+  }
+
+  void _addExercise(int dayIndex) {
     setState(() {
-      workoutDays.add(WorkoutDay(dayName: 'روز ${workoutDays.length + 1}'));
+      _days[dayIndex].exercises.add(
+        WorkoutExercise(
+          exerciseId: _uuid.v4(),
+          name: 'تمرین جدید',
+          sets: 3, // پیش‌فرض 3 ست
+          countingType: 'وزن (kg)', // پیش‌فرض وزن
+          supersetGroupId: null, // پیش‌فرض بدون سوپرست
+        ),
+      );
     });
   }
 
-  void savePlan() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+  void _removeExercise(int dayIndex, int exerciseIndex) {
+    setState(() {
+      _days[dayIndex].exercises.removeAt(exerciseIndex);
+    });
+  }
+
+  void _updateExerciseSuperset(
+    int dayIndex,
+    int exerciseIndex,
+    String? supersetGroupId,
+  ) {
+    setState(() {
+      _days[dayIndex].exercises[exerciseIndex] = _days[dayIndex]
+          .exercises[exerciseIndex]
+          .copyWith(supersetGroupId: supersetGroupId);
+    });
+  }
+
+  Future<void> _savePlan() async {
+    if (!_formKey.currentState!.validate()) return;
+
     final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
       context,
       listen: false,
     );
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    if (_planNameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً اسم برنامه رو وارد کن!')),
-      );
-      return;
-    }
-
-    setState(() => isLoading = true); // شروع لودینگ
-
-    for (var day in workoutDays) {
-      final plan = WorkoutPlanModel(
-        userId: authProvider.userId ?? '',
-        planName: _planNameController.text,
-        username: authProvider.currentUser?.username ?? '',
-        role: authProvider.currentUser?.role ?? 'athlete',
-        assignedTo: isForStudent ? studentUsername : null,
-        day: day.dayName,
-      );
-
-      final exercises =
-          day.exercises
-              .map(
-                (e) => WorkoutExerciseModel(
-                  planId: '', // بعد از ثبت plan پر می‌شه
-                  exerciseId: e.exerciseId,
-                  sets: e.sets,
-                  reps: e.reps,
-                  duration: e.duration,
-                  countingType: e.countingType,
-                  notes: e.notes,
-                ),
-              )
-              .toList();
-
+    try {
       await workoutPlanProvider.createPlan(
-        userId: authProvider.userId ?? '',
+        userId: _currentUserId ?? '',
         planName: _planNameController.text,
-        day: day.dayName,
-        assignedToUsername: isForStudent ? studentUsername : null,
-        username: authProvider.currentUser?.username ?? '',
-        role: authProvider.currentUser?.role ?? 'athlete',
-        exercises: exercises,
+        days: _days,
+        assignedToUsername: _selectedAssignedToUsername,
+        username: _currentUsername ?? '',
+        role: _currentRole ?? 'athlete',
       );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('برنامه با موفقیت ایجاد شد!')),
+      );
+      _planNameController.clear();
+      _notesController.clear();
+      setState(() {
+        _days = [WorkoutDay(dayName: 'روز 1', exercises: [])];
+        _selectedAssignedToUsername = null;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در ایجاد برنامه: $e')));
     }
-
-    setState(() => isLoading = false); // پایان لودینگ
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('برنامه با موفقیت ثبت شد!')));
-    addNewPlan(); // ریست فرم
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-    final exerciseProvider = Provider.of<ExerciseProvider>(context);
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ثبت برنامه تمرینی'),
-        backgroundColor: Colors.yellow,
-        foregroundColor: Colors.black,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: isLoading ? null : savePlan, // غیرفعال موقع لودینگ
-          ),
-        ],
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          'ایجاد برنامه تمرینی',
+          style: TextStyle(color: Colors.yellow, fontSize: 20),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
+      backgroundColor: Colors.black,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Stack(
-          // اضافه کردن Stack برای لودینگ
-          children: [
-            Column(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CustomTextField(
+                TextFormField(
                   controller: _planNameController,
-                  label: 'اسم برنامه',
-                  validator:
-                      (value) =>
-                          value!.isEmpty ? 'اسم برنامه رو وارد کن!' : null,
+                  decoration: InputDecoration(
+                    labelText: 'نام برنامه',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'نام برنامه الزامی است';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
-                if (authProvider.currentUser?.role == 'coach') ...[
-                  Row(
-                    children: [
-                      const Text(
-                        'نقش: ',
-                        style: TextStyle(color: Colors.white),
+                if (_currentRole == 'coach') // فقط برای مربی‌ها
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'یوزرنیم ورزشکار (اختیاری)',
+                      labelStyle: const TextStyle(color: Colors.white),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: const BorderSide(color: Colors.amber),
                       ),
-                      ChoiceChip(
-                        label: const Text('برای خودم'),
-                        selected: !isForStudent,
-                        onSelected: (_) => setState(() => isForStudent = false),
-                        selectedColor: Colors.yellow,
-                        backgroundColor: Colors.grey[800],
-                        labelStyle: const TextStyle(color: Colors.black),
+                      filled: true,
+                      fillColor: Colors.grey[900],
+                    ),
+                    value: _selectedAssignedToUsername,
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text(
+                          'هیچ‌کدام',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('برای شاگرد'),
-                        selected: isForStudent,
-                        onSelected: (_) => setState(() => isForStudent = true),
-                        selectedColor: Colors.yellow,
-                        backgroundColor: Colors.grey[800],
-                        labelStyle: const TextStyle(color: Colors.black),
-                      ),
+                      // اینجا باید لیستی از یوزرنیم‌های ورزشکارها بگیری (مثلاً از AuthProvider)
+                      // برای سادگی، فعلاً خالی نگه می‌دارم
                     ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedAssignedToUsername = value;
+                      });
+                    },
+                    dropdownColor: Colors.grey[900],
+                    style: const TextStyle(color: Colors.white),
                   ),
-                  if (isForStudent)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: CustomTextField(
-                        label: 'نام کاربری شاگرد',
-                        onChanged: (value) => studentUsername = value,
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _notesController,
+                  decoration: InputDecoration(
+                    labelText: 'یادداشت‌ها (اختیاری)',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                ..._days.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final day = entry.value;
+                  return _buildDaySection(index, day);
+                }),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _addDay,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      child: const Text(
+                        'اضافه کردن روز',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
                       ),
                     ),
-                ],
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: workoutDays.length,
-                    itemBuilder: (context, index) {
-                      return WorkoutDayCard(
-                        workoutDay: workoutDays[index],
-                        onDelete:
-                            () => setState(() => workoutDays.removeAt(index)),
-                        availableExercises: exerciseProvider.coachExercises,
-                      );
-                    },
-                  ),
+                    ElevatedButton(
+                      onPressed: _savePlan,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.yellow,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      child: const Text(
+                        'ذخیره برنامه',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            if (isLoading)
-              const Center(
-                child: CustomButton(
-                  text: 'در حال ثبت...', // دکمه غیرفعال موقع لودینگ
-                  onPressed: null,
-                  isLoading: true,
-                  backgroundColor: Colors.yellow,
-                  textColor: Colors.black,
-                ),
-              ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: isLoading ? null : addWorkoutDay, // غیرفعال موقع لودینگ
-        backgroundColor: Colors.yellow,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
-    );
-  }
-}
-
-class WorkoutDay {
-  String dayName;
-  List<WorkoutExercise> exercises;
-
-  WorkoutDay({
-    required this.dayName,
-    List<WorkoutExercise> exercises = const [],
-  }) : exercises = List<WorkoutExercise>.from(
-         exercises,
-       ); // تبدیل به لیست قابل تغییر
-}
-
-class WorkoutExercise {
-  String exerciseId;
-  String name;
-  int sets;
-  int? reps;
-  int? duration;
-  String countingType;
-  String? notes;
-
-  WorkoutExercise({
-    required this.exerciseId,
-    required this.name,
-    required this.sets,
-    this.reps,
-    this.duration,
-    required this.countingType,
-    this.notes,
-  });
-}
-
-class WorkoutDayCard extends StatefulWidget {
-  final WorkoutDay workoutDay;
-  final VoidCallback onDelete;
-  final List<Map<String, dynamic>> availableExercises;
-
-  const WorkoutDayCard({
-    super.key,
-    required this.workoutDay,
-    required this.onDelete,
-    required this.availableExercises,
-  });
-
-  @override
-  _WorkoutDayCardState createState() => _WorkoutDayCardState();
-}
-
-class _WorkoutDayCardState extends State<WorkoutDayCard> {
-  void addExercise(Map<String, dynamic>? exercise) {
-    if (exercise != null) {
-      _showAddExerciseDialog(exercise);
-    }
-  }
-
-  void _showAddExerciseDialog(Map<String, dynamic> exercise) {
-    final TextEditingController setsController = TextEditingController(
-      text: '3',
-    );
-    final TextEditingController valueController = TextEditingController();
-    final TextEditingController notesController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            'اضافه کردن تمرین',
-            style: TextStyle(color: Colors.yellow),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CustomTextField(
-                controller: setsController,
-                label: 'تعداد ست',
-                keyboardType: TextInputType.number,
-                validator:
-                    (value) => value!.isEmpty ? 'تعداد ست رو وارد کن!' : null,
-              ),
-              const SizedBox(height: 20),
-              CustomTextField(
-                controller: valueController,
-                label:
-                    exercise['counting_type'] == 'وزن (kg)'
-                        ? 'وزن (kg)'
-                        : exercise['counting_type'] == 'تعداد'
-                        ? 'تعداد (حرکات)'
-                        : 'مدت زمان (ثانیه)',
-                keyboardType: TextInputType.number,
-                validator:
-                    (value) => value!.isEmpty ? 'مقدار رو وارد کن!' : null,
-              ),
-              const SizedBox(height: 20),
-              CustomTextField(
-                controller: notesController,
-                label: 'یادداشت (اختیاری)',
-                maxLines: 2,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('لغو', style: TextStyle(color: Colors.white)),
-            ),
-            TextButton(
-              onPressed: () {
-                if (setsController.text.isEmpty ||
-                    valueController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('لطفاً همه فیلدها رو پر کن!')),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  widget.workoutDay.exercises.add(
-                    WorkoutExercise(
-                      exerciseId: exercise['id'],
-                      name: exercise['name'],
-                      sets: int.parse(setsController.text),
-                      reps:
-                          exercise['counting_type'] == 'تعداد'
-                              ? int.parse(valueController.text)
-                              : null,
-                      duration:
-                          exercise['counting_type'] == 'تایم'
-                              ? int.parse(valueController.text)
-                              : null,
-                      countingType: exercise['counting_type'],
-                      notes:
-                          notesController.text.isEmpty
-                              ? null
-                              : notesController.text,
-                    ),
-                  );
-                });
-                Navigator.pop(context);
-              },
-              child: const Text(
-                'ذخیره',
-                style: TextStyle(color: Colors.yellow),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
-  void updateExercise(WorkoutExercise updatedExercise, int index) {
-    setState(() {
-      widget.workoutDay.exercises[index] = updatedExercise;
-    });
-  }
-
-  void deleteExercise(int index) {
-    setState(() {
-      widget.workoutDay.exercises.removeAt(index);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildDaySection(int dayIndex, WorkoutDay day) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
+      color: Colors.grey[900],
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -425,169 +278,264 @@ class _WorkoutDayCardState extends State<WorkoutDayCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.workoutDay.dayName,
-                  style: Theme.of(context).textTheme.titleLarge,
+                  day.dayName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: widget.onDelete,
+                  onPressed: () => _removeDay(dayIndex),
                 ),
               ],
             ),
-            ...widget.workoutDay.exercises.asMap().entries.map((entry) {
-              final index = entry.key;
+            ...day.exercises.asMap().entries.map((entry) {
+              final exerciseIndex = entry.key;
               final exercise = entry.value;
-              return ExerciseRow(
-                exercise: exercise,
-                countingType: exercise.countingType,
-                onDelete: () => deleteExercise(index),
-                onUpdate: (updated) => updateExercise(updated, index),
-              );
-            }).toList(),
-            if (widget.availableExercises.isNotEmpty) // چک کردن لیست خالی
-              DropdownButton<Map<String, dynamic>>(
-                hint: const Text(
-                  'انتخاب تمرین',
-                  style: TextStyle(color: Colors.white),
+              return _buildExerciseSection(dayIndex, exerciseIndex, exercise);
+            }),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => _addExercise(dayIndex),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 16,
                 ),
-                items:
-                    widget.availableExercises.map((exercise) {
-                      return DropdownMenuItem(
-                        value: exercise,
-                        child: Text(exercise['name']),
-                      );
-                    }).toList(),
-                onChanged: (value) => addExercise(value),
-                dropdownColor: Colors.grey[900],
-                style: const TextStyle(color: Colors.white),
-                iconEnabledColor: Colors.yellow, // رنگ آیکون Dropdown
-                isExpanded: true, // گسترش Dropdown برای نمایش بهتر
-              )
-            else
-              const Text(
-                'هیچ تمرینی یافت نشد',
-                style: TextStyle(color: Colors.white),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
+              child: const Text(
+                'اضافه کردن تمرین',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ).animate().scale(duration: 200.ms),
           ],
         ),
       ),
-    );
-  }
-}
-
-class ExerciseRow extends StatelessWidget {
-  final WorkoutExercise exercise;
-  final String countingType;
-  final VoidCallback onDelete;
-  final Function(WorkoutExercise) onUpdate;
-
-  const ExerciseRow({
-    super.key,
-    required this.exercise,
-    required this.countingType,
-    required this.onDelete,
-    required this.onUpdate,
-  });
-
-  void _showEditDialog(BuildContext context) {
-    final setsController = TextEditingController(
-      text: exercise.sets.toString(),
-    );
-    final valueController = TextEditingController(
-      text: (exercise.reps ?? exercise.duration ?? '').toString(),
-    );
-    final notesController = TextEditingController(text: exercise.notes ?? '');
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            'ویرایش تمرین',
-            style: TextStyle(color: Colors.yellow),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CustomTextField(
-                controller: setsController,
-                label: 'تعداد ست',
-                keyboardType: TextInputType.number,
-              ),
-              CustomTextField(
-                controller: valueController,
-                label:
-                    countingType == 'وزن (kg)'
-                        ? 'وزن (kg)'
-                        : countingType == 'تایم'
-                        ? 'زمان (ثانیه)'
-                        : 'تکرار',
-                keyboardType: TextInputType.number,
-              ),
-              CustomTextField(
-                controller: notesController,
-                label: 'یادداشت (اختیاری)',
-                maxLines: 2,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('لغو', style: TextStyle(color: Colors.white)),
-            ),
-            TextButton(
-              onPressed: () {
-                final updated = WorkoutExercise(
-                  exerciseId: exercise.exerciseId,
-                  name: exercise.name,
-                  sets: int.parse(setsController.text),
-                  reps:
-                      countingType == 'تعداد'
-                          ? int.parse(valueController.text)
-                          : null,
-                  duration:
-                      countingType == 'تایم'
-                          ? int.parse(valueController.text)
-                          : null,
-                  countingType: countingType,
-                  notes:
-                      notesController.text.isEmpty
-                          ? null
-                          : notesController.text,
-                );
-                onUpdate(updated);
-                Navigator.pop(context);
-              },
-              child: const Text(
-                'ذخیره',
-                style: TextStyle(color: Colors.yellow),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+    ).animate().fade(duration: 300.ms).slideX(begin: 0.2, end: 0);
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildExerciseSection(
+    int dayIndex,
+    int exerciseIndex,
+    WorkoutExercise exercise,
+  ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(exercise.name)),
-          Text('$countingType: ${exercise.reps ?? exercise.duration ?? 0}'),
-          const SizedBox(width: 8),
-          Text('${exercise.sets} ست'),
-          IconButton(
-            icon: const Icon(Icons.edit, color: Colors.yellow),
-            onPressed: () => _showEditDialog(context),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  initialValue: exercise.name,
+                  decoration: InputDecoration(
+                    labelText: 'نام تمرین',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[800],
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (value) {
+                    setState(() {
+                      _days[dayIndex].exercises[exerciseIndex] = exercise
+                          .copyWith(name: value);
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'نوع شمارش',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[800],
+                  ),
+                  value: exercise.countingType,
+                  items:
+                      ['وزن (kg)', 'تعداد', 'تایم'].map((type) {
+                        return DropdownMenuItem<String>(
+                          value: type,
+                          child: Text(
+                            type,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        );
+                      }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _days[dayIndex].exercises[exerciseIndex] = exercise
+                          .copyWith(countingType: value);
+                    });
+                  },
+                  dropdownColor: Colors.grey[900],
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: exercise.sets.toString(),
+                        decoration: InputDecoration(
+                          labelText: 'تعداد ست‌ها',
+                          labelStyle: const TextStyle(color: Colors.white),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.amber),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[800],
+                        ),
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        onChanged: (value) {
+                          setState(() {
+                            _days[dayIndex].exercises[exerciseIndex] = exercise
+                                .copyWith(
+                                  sets: int.tryParse(value) ?? exercise.sets,
+                                );
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: exercise.reps?.toString() ?? '',
+                        decoration: InputDecoration(
+                          labelText: 'تکرارها (اختیاری)',
+                          labelStyle: const TextStyle(color: Colors.white),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.amber),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[800],
+                        ),
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        onChanged: (value) {
+                          setState(() {
+                            _days[dayIndex]
+                                .exercises[exerciseIndex] = exercise.copyWith(
+                              reps: value.isEmpty ? null : int.tryParse(value),
+                            );
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: exercise.duration?.toString() ?? '',
+                        decoration: InputDecoration(
+                          labelText: 'مدت زمان (ثانیه، اختیاری)',
+                          labelStyle: const TextStyle(color: Colors.white),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.amber),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[800],
+                        ),
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        onChanged: (value) {
+                          setState(() {
+                            _days[dayIndex]
+                                .exercises[exerciseIndex] = exercise.copyWith(
+                              duration:
+                                  value.isEmpty ? null : int.tryParse(value),
+                            );
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String?>(
+                  decoration: InputDecoration(
+                    labelText: 'گروه سوپرست (اختیاری)',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[800],
+                  ),
+                  value: exercise.supersetGroupId,
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text(
+                        'بدون سوپرست',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    ...Provider.of<WorkoutPlanProvider>(
+                      context,
+                      listen: false,
+                    ).supersetGroups.keys.map(
+                      (groupId) => DropdownMenuItem<String>(
+                        value: groupId,
+                        child: Text(
+                          'سوپرست $groupId',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    _updateExerciseSuperset(dayIndex, exerciseIndex, value);
+                  },
+                  dropdownColor: Colors.grey[900],
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  initialValue: exercise.notes ?? '',
+                  decoration: InputDecoration(
+                    labelText: 'یادداشت‌ها (اختیاری)',
+                    labelStyle: const TextStyle(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Colors.amber),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[800],
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (value) {
+                    setState(() {
+                      _days[dayIndex].exercises[exerciseIndex] = exercise
+                          .copyWith(notes: value.isEmpty ? null : value);
+                    });
+                  },
+                ),
+              ],
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.red),
-            onPressed: onDelete,
+            onPressed: () => _removeExercise(dayIndex, exerciseIndex),
           ),
         ],
       ),

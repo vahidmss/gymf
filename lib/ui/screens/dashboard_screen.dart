@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gymf/ui/screens/WorkoutLogScreen.dart';
 import 'package:gymf/ui/screens/coaches_screen.dart';
 import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
@@ -73,6 +74,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => WorkoutPlanScreen(), // صفحه ثبت تمرین
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.fitness_center),
+              title: Text("ثبت تمرین روز"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WorkoutLogScreen(), // ص
                   ),
                 );
               },

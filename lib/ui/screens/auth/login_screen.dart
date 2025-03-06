@@ -47,12 +47,60 @@ class _LoginForm extends StatefulWidget {
 class _LoginFormState extends State<_LoginForm> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSignIn(BuildContext context) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).signInWithUsername(_usernameController.text, _passwordController.text);
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در ورود: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleGoogleSignIn(BuildContext context) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).signInWithGoogle(context);
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در ورود با گوگل: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -67,38 +115,30 @@ class _LoginFormState extends State<_LoginForm> {
           obscureText: true,
         ),
         const SizedBox(height: 30),
-        CustomButton(
-          text: 'ورود',
-          onPressed: () async {
-            await Provider.of<AuthProvider>(
-              context,
-              listen: false,
-            ).signInWithUsername(
-              _usernameController.text,
-              _passwordController.text,
-            );
-          },
-        ),
+        _isLoading
+            ? const CircularProgressIndicator()
+            : CustomButton(
+              text: 'ورود',
+              onPressed: () => _handleSignIn(context),
+            ),
         const SizedBox(height: 15),
         CustomButton(
           text: 'ورود با جیمیل',
-          onPressed: () {
-            Provider.of<AuthProvider>(
-              context,
-              listen: false,
-            ).signInWithGoogle(context);
-          },
+          onPressed: _isLoading ? null : () => _handleGoogleSignIn(context),
         ),
         const SizedBox(height: 15),
         TextButton(
-          onPressed: () {
-            showModalBottomSheet(
-              context: context,
-              backgroundColor: Colors.transparent,
-              isScrollControlled: true,
-              builder: (context) => const SignUpSheet(),
-            );
-          },
+          onPressed:
+              _isLoading
+                  ? null
+                  : () {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
+                      builder: (context) => const SignUpSheet(),
+                    );
+                  },
           child: const Text(
             'ثبت‌نام',
             style: TextStyle(fontSize: 16, color: Colors.yellowAccent),
@@ -121,9 +161,9 @@ class SignUpSheet extends StatelessWidget {
       builder: (context, scrollController) {
         return Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: Colors.black,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SingleChildScrollView(
             controller: scrollController,
@@ -148,6 +188,7 @@ class _SignUpFormState extends State<_SignUpForm> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _coachCodeController = TextEditingController();
   String _selectedRole = 'athlete';
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -156,6 +197,38 @@ class _SignUpFormState extends State<_SignUpForm> {
     _passwordController.dispose();
     _coachCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSignUp(BuildContext context) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await Provider.of<AuthProvider>(context, listen: false).signUpWithPhone(
+        _phoneController.text,
+        _usernameController.text,
+        _passwordController.text,
+        _selectedRole,
+      );
+      if (mounted) {
+        Navigator.pop(context); // بستن BottomSheet
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('کد OTP برای شما ارسال شد، لطفاً آن را تأیید کنید.'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('خطا در ثبت‌نام: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -204,20 +277,12 @@ class _SignUpFormState extends State<_SignUpForm> {
             label: 'کد تأیید مربی',
           ),
         const SizedBox(height: 20),
-        CustomButton(
-          text: 'ارسال OTP',
-          onPressed: () async {
-            await Provider.of<AuthProvider>(
-              context,
-              listen: false,
-            ).signUpWithPhone(
-              _phoneController.text,
-              _usernameController.text,
-              _passwordController.text,
-              _selectedRole,
-            );
-          },
-        ),
+        _isLoading
+            ? const CircularProgressIndicator()
+            : CustomButton(
+              text: 'ارسال OTP',
+              onPressed: () => _handleSignUp(context),
+            ),
       ],
     );
   }
