@@ -10,15 +10,15 @@ class ExerciseService {
         'id': exercise.id,
         'name': exercise.name,
         'category': exercise.category,
-        'target_muscle': exercise.targetMuscle, // هماهنگ با مدل
-        'created_by':
-            exercise.createdBy, // تغییر از coach_username به created_by
+        'target_muscle':
+            exercise.category == 'قدرتی' ? exercise.targetMuscle : null,
+        'created_by': exercise.createdBy,
         'description': exercise.description,
         'image_url': exercise.imageUrl,
         'video_url': exercise.videoUrl,
-        'counting_type': exercise.countingType, // نوع شمارش
+        'counting_type': exercise.countingType,
         'created_at': exercise.createdAt.toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(), // اضافه کردن updated_at
+        'updated_at': DateTime.now().toIso8601String(),
       });
     } catch (e, stacktrace) {
       print('🔴 خطا در ذخیره تمرین: $e');
@@ -40,11 +40,17 @@ class ExerciseService {
 
   Future<bool> updateExercise(String id, Map<String, dynamic> updates) async {
     try {
-      // اضافه کردن updated_at به آپدیت‌ها
       final updatedData = {
         ...updates,
         'updated_at': DateTime.now().toIso8601String(),
+        'target_muscle':
+            updates['category'] == 'قدرتی' ? updates['target_muscle'] : null,
       };
+
+      // حذف کلیدهایی که مقدار null دارن (به جز updated_at)
+      updatedData.removeWhere(
+        (key, value) => value == null && key != 'updated_at',
+      );
 
       await supabase.from('exercises').update(updatedData).match({'id': id});
       return true;

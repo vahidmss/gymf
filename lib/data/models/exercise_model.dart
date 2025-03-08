@@ -30,6 +30,22 @@ class ExerciseModel {
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now();
 
+  // سازنده خالی برای استفاده در شرایطی که نیاز به مدل خالی داریم
+  factory ExerciseModel.empty() {
+    return ExerciseModel(
+      id: '',
+      category: '',
+      name: '',
+      createdBy: '',
+      description: null,
+      imageUrl: null,
+      videoUrl: null,
+      countingType: null,
+      createdAt: DateTime.now(),
+      updatedAt: null,
+    );
+  }
+
   // تبدیل از JSON به مدل
   factory ExerciseModel.fromJson(Map<String, dynamic> json) {
     return ExerciseModel(

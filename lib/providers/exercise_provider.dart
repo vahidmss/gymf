@@ -21,55 +21,79 @@ class ExerciseProvider with ChangeNotifier {
   final Uuid _uuid = const Uuid();
   late AuthProvider _authProvider;
 
-  bool _isSearching = false;
+  final bool _isSearching = false;
   List<ExerciseModel> _searchResults = [];
-  String _searchQuery = '';
+  final String _searchQuery = '';
 
   String? get selectedCategory => _selectedCategory;
   String? get selectedTargetMuscle => _selectedTargetMuscle;
   String? get selectedCountingType => _selectedCountingType;
   bool get isLoading => _isLoading;
-  bool get isSearching => _isSearching;
-  String get searchQuery => _searchQuery;
 
   ExerciseProvider(BuildContext context) {
     _authProvider = Provider.of<AuthProvider>(context, listen: false);
   }
 
   void setCategory(String category) {
-    _selectedCategory = category;
-    _selectedTargetMuscle = null;
-    _selectedCountingType = null;
-    notifyListeners();
+    if (_selectedCategory != category) {
+      _selectedCategory = category;
+      _selectedTargetMuscle = null;
+      _selectedCountingType = null;
+      notifyListeners();
+    }
   }
 
   void setTargetMuscle(String muscle) {
-    _selectedTargetMuscle = muscle;
-    notifyListeners();
+    if (_selectedTargetMuscle != muscle) {
+      _selectedTargetMuscle = muscle;
+      notifyListeners();
+    }
   }
 
   void setCountingType(String? countingType) {
-    _selectedCountingType = countingType;
-    notifyListeners();
+    if (_selectedCountingType != countingType) {
+      _selectedCountingType = countingType;
+      notifyListeners();
+    }
   }
 
   void setImage(File image) {
-    _selectedImage = image;
-    notifyListeners();
+    if (_selectedImage != image) {
+      _selectedImage = image;
+      notifyListeners();
+    }
   }
 
   void setVideo(File video) {
-    _selectedVideo = video;
-    notifyListeners();
+    if (_selectedVideo != video) {
+      _selectedVideo = video;
+      notifyListeners();
+    }
   }
 
   void resetForm() {
-    _selectedCategory = null;
-    _selectedTargetMuscle = null;
-    _selectedCountingType = null;
-    _selectedImage = null;
-    _selectedVideo = null;
-    notifyListeners();
+    bool changed = false;
+    if (_selectedCategory != null) {
+      _selectedCategory = null;
+      changed = true;
+    }
+    if (_selectedTargetMuscle != null) {
+      _selectedTargetMuscle = null;
+      changed = true;
+    }
+    if (_selectedCountingType != null) {
+      _selectedCountingType = null;
+      changed = true;
+    }
+    if (_selectedImage != null) {
+      _selectedImage = null;
+      changed = true;
+    }
+    if (_selectedVideo != null) {
+      _selectedVideo = null;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   Future<String?> _uploadFile(File file, String path) async {
@@ -107,7 +131,7 @@ class ExerciseProvider with ChangeNotifier {
     }
 
     _isLoading = true;
-    notifyListeners();
+    // notifyListeners(); // فقط توی پایان فراخوانی می‌کنیم
 
     try {
       final existingExercise = await _checkDuplicateExercise(
@@ -118,9 +142,13 @@ class ExerciseProvider with ChangeNotifier {
       if (existingExercise != null && existingExercise.id.isNotEmpty) {
         if (existingExercise.createdBy == _authProvider.userId) {
           onFailure('این تمرین قبلاً توسط شما ثبت شده. به صفحه ویرایش بروید.');
+          _isLoading = false;
+          notifyListeners();
           return;
         } else {
           onFailure('این تمرین قبلاً توسط کاربر دیگری ثبت شده است.');
+          _isLoading = false;
+          notifyListeners();
           return;
         }
       }
@@ -160,12 +188,13 @@ class ExerciseProvider with ChangeNotifier {
       onSuccess();
       resetForm();
       await fetchCoachExercises(_authProvider.userId ?? '');
+      _isLoading = false;
+      notifyListeners();
     } catch (e) {
+      _isLoading = false;
       onFailure('خطا در ثبت تمرین: $e');
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
   Future<ExerciseModel?> _checkDuplicateExercise(
@@ -234,10 +263,6 @@ class ExerciseProvider with ChangeNotifier {
       print('⚠️ دسته‌بندی یا جستجو خالی است.');
       return [];
     }
-    _searchQuery = searchQuery;
-    _isSearching =
-        true; // فقط متغیر رو تغییر بده، نیازی به notifyListeners نیست
-
     try {
       final exercises = await _exerciseService.getExercises().timeout(
         const Duration(seconds: 10),
@@ -259,11 +284,9 @@ class ExerciseProvider with ChangeNotifier {
             return matchesCategory && matchesMuscle && matchesName;
           }).toList();
       print('✅ تعداد نتایج جستجو: ${_searchResults.length}');
-      _isSearching = false; // فقط متغیر رو تغییر بده
       return _searchResults;
     } catch (e) {
       debugPrint('❌ خطا در جستجوی تمرینات: $e');
-      _isSearching = false;
       return [];
     }
   }

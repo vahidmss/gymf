@@ -10,6 +10,7 @@ import 'package:gymf/providers/exercise_provider.dart';
 import 'package:gymf/ui/widgets/custom_button.dart';
 import 'package:gymf/ui/widgets/custom_text_field.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart'; // برای فونت Vazirmatn
 
 class ExerciseSubmissionScreen extends StatefulWidget {
   const ExerciseSubmissionScreen({super.key});
@@ -33,26 +34,26 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
   late ValueNotifier<String> _searchQueryNotifier;
   late Debouncer<String> _searchDebouncer;
   late StreamSubscription<String> _searchSubscription;
-  late Future<List<ExerciseModel>> _coachExercisesFuture;
+  Future<List<ExerciseModel>>? _coachExercisesFuture;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 600), // زمان کمتر برای روان‌تر شدن
     );
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeInOut,
+      curve: Curves.easeOutExpo,
     ).drive(Tween<double>(begin: 0, end: 1));
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.5),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutExpo));
     _scaleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeInOut,
+      curve: Curves.easeOutExpo,
     ).drive(Tween<double>(begin: 0.8, end: 1.0));
     _controller.forward();
 
@@ -77,9 +78,13 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
       context,
       listen: false,
     );
-    _coachExercisesFuture = exerciseProvider.fetchCoachExercises(
-      authProvider.userId ?? '',
-    );
+    _loadCoachExercises(authProvider.userId ?? '', exerciseProvider);
+  }
+
+  void _loadCoachExercises(String userId, ExerciseProvider exerciseProvider) {
+    setState(() {
+      _coachExercisesFuture = exerciseProvider.fetchCoachExercises(userId);
+    });
   }
 
   @override
@@ -99,20 +104,16 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final exerciseProvider = Provider.of<ExerciseProvider>(
-      context,
-      listen: false,
-    );
-
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.black87, Colors.grey],
+          colors: [Color(0xFF2A2A72), Color(0xFF009FFD)], // بنفش تیره به آبی
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -125,11 +126,14 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'ثبت تمرین جدید',
-                style: TextStyle(
-                  color: Colors.yellowAccent,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.vazirmatn(
+                  textStyle: const TextStyle(
+                    color: Colors.yellowAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24,
+                  ),
                 ),
               ),
             ],
@@ -160,38 +164,56 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: _buildCategoryDropdown(exerciseProvider),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        return ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: _buildCategoryDropdown(provider),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
-                    if (exerciseProvider.selectedCategory == 'قدرتی')
-                      ScaleTransition(
-                        scale: _scaleAnimation,
-                        child: _buildTargetMuscleDropdown(exerciseProvider),
-                      ),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        if (provider.selectedCategory == 'قدرتی') {
+                          return ScaleTransition(
+                            scale: _scaleAnimation,
+                            child: _buildTargetMuscleDropdown(provider),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
                     const SizedBox(height: 20),
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: CustomTextField(
-                        controller: _nameController,
-                        label: 'اسم تمرین',
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'اسم تمرین نمی‌تونه خالی باشه!';
-                          }
-                          return null;
-                        },
-                      ),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        return ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: _buildCustomTextField(
+                            controller: _nameController,
+                            label: 'اسم تمرین',
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'اسم تمرین نمی‌تونه خالی باشه!';
+                              }
+                              return null;
+                            },
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     ValueListenableBuilder<String>(
                       valueListenable: _searchQueryNotifier,
                       builder: (context, searchQuery, child) {
+                        final provider = Provider.of<ExerciseProvider>(
+                          context,
+                          listen: false,
+                        );
                         if (searchQuery.isNotEmpty &&
-                            exerciseProvider.selectedCategory != null) {
+                            provider.selectedCategory != null) {
                           return _buildSearchResults(
-                            exerciseProvider,
+                            provider,
                             authProvider.userId,
                             searchQuery,
                           );
@@ -200,76 +222,46 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                       },
                     ),
                     const SizedBox(height: 20),
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: CustomTextField(
-                        controller: _descriptionController,
-                        label: 'توضیحات (اختیاری)',
-                        maxLines: 3,
-                      ),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        return ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: _buildCustomTextField(
+                            controller: _descriptionController,
+                            label: 'توضیحات (اختیاری)',
+                            maxLines: 3,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        return ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: _buildCountingTypeDropdown(provider),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     ScaleTransition(
                       scale: _scaleAnimation,
-                      child: DropdownButtonFormField<String>(
-                        value:
-                            _selectedCountingType ??
-                            exerciseProvider.selectedCountingType,
-                        decoration: InputDecoration(
-                          labelText: 'نوع شمارش',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white.withOpacity(0.1),
-                          labelStyle: const TextStyle(
-                            color: Colors.yellowAccent,
-                          ),
-                        ),
-                        dropdownColor: Colors.black87,
-                        style: const TextStyle(color: Colors.white),
-                        iconEnabledColor: Colors.yellowAccent,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'وزن (kg)',
-                            child: Text('وزن (kg)'),
-                          ),
-                          DropdownMenuItem(value: 'تایم', child: Text('تایم')),
-                          DropdownMenuItem(
-                            value: 'تعداد',
-                            child: Text('تعداد'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedCountingType = value;
-                            exerciseProvider.setCountingType(value);
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null) {
-                            return 'لطفاً نوع شمارش رو انتخاب کن!';
-                          }
-                          return null;
-                        },
+                      child: _buildMediaButtons(
+                        context,
+                        Provider.of<ExerciseProvider>(context, listen: false),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: _buildMediaButtons(context, exerciseProvider),
                     ),
                     const SizedBox(height: 30),
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: CustomButton(
-                        text: 'ثبت تمرین',
-                        onPressed: () => _submitExercise(exerciseProvider),
-                        backgroundColor: Colors.yellowAccent,
-                        textColor: Colors.black,
-                        borderRadius: 15,
-                        elevation: 5,
-                      ),
+                    Consumer<ExerciseProvider>(
+                      builder: (context, provider, child) {
+                        return ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: _buildCustomButton(
+                            text: 'ثبت تمرین',
+                            onPressed: () => _submitExercise(provider),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -326,13 +318,13 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
       value: provider.selectedCategory,
       decoration: InputDecoration(
         labelText: 'دسته‌بندی',
+        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         filled: true,
         fillColor: Colors.white.withOpacity(0.1),
-        labelStyle: const TextStyle(color: Colors.yellowAccent),
       ),
-      dropdownColor: Colors.black87,
-      style: const TextStyle(color: Colors.white),
+      dropdownColor: const Color(0xFF2A2A72),
+      style: GoogleFonts.vazirmatn(color: Colors.white),
       iconEnabledColor: Colors.yellowAccent,
       items: const [
         DropdownMenuItem(value: 'قدرتی', child: Text('قدرتی')),
@@ -353,13 +345,13 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
               : null,
       decoration: InputDecoration(
         labelText: 'عضله هدف',
+        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         filled: true,
         fillColor: Colors.white.withOpacity(0.1),
-        labelStyle: const TextStyle(color: Colors.yellowAccent),
       ),
-      dropdownColor: Colors.black87,
-      style: const TextStyle(color: Colors.white),
+      dropdownColor: const Color(0xFF2A2A72),
+      style: GoogleFonts.vazirmatn(color: Colors.white),
       iconEnabledColor: Colors.yellowAccent,
       items: const [
         DropdownMenuItem(value: 'پا', child: Text('پا')),
@@ -376,13 +368,124 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
     );
   }
 
+  Widget _buildCountingTypeDropdown(ExerciseProvider provider) {
+    return DropdownButtonFormField<String>(
+      value: _selectedCountingType ?? provider.selectedCountingType,
+      decoration: InputDecoration(
+        labelText: 'نوع شمارش',
+        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.1),
+      ),
+      dropdownColor: const Color(0xFF2A2A72),
+      style: GoogleFonts.vazirmatn(color: Colors.white),
+      iconEnabledColor: Colors.yellowAccent,
+      items: const [
+        DropdownMenuItem(value: 'وزن (kg)', child: Text('وزن (kg)')),
+        DropdownMenuItem(value: 'تایم', child: Text('تایم')),
+        DropdownMenuItem(value: 'تعداد', child: Text('تعداد')),
+      ],
+      onChanged: (value) {
+        setState(() {
+          _selectedCountingType = value;
+          provider.setCountingType(value);
+        });
+      },
+      validator:
+          (value) => value == null ? 'لطفاً نوع شمارش رو انتخاب کن!' : null,
+    );
+  }
+
+  Widget _buildCustomTextField({
+    required TextEditingController controller,
+    required String label,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+        ),
+        style: GoogleFonts.vazirmatn(color: Colors.white),
+        validator: validator,
+      ),
+    );
+  }
+
+  Widget _buildCustomButton({
+    required String text,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.yellowAccent, const Color(0xFFFFD700)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.yellowAccent.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+        ),
+        child: Text(
+          text,
+          style: GoogleFonts.vazirmatn(
+            textStyle: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMediaButtons(BuildContext context, ExerciseProvider provider) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         ScaleTransition(
           scale: _scaleAnimation,
-          child: ElevatedButton.icon(
+          child: _buildGlassButton(
+            icon: Icons.image,
+            label: 'انتخاب عکس',
             onPressed: () async {
               final pickedFile = await ImagePicker().pickImage(
                 source: ImageSource.gallery,
@@ -391,23 +494,13 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                 provider.setImage(File(pickedFile.path));
               }
             },
-            icon: const Icon(Icons.image, color: Colors.white),
-            label: const Text(
-              'انتخاب عکس',
-              style: TextStyle(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey.shade700,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              elevation: 5,
-            ),
           ),
         ),
         ScaleTransition(
           scale: _scaleAnimation,
-          child: ElevatedButton.icon(
+          child: _buildGlassButton(
+            icon: Icons.videocam,
+            label: 'انتخاب ویدیو',
             onPressed: () async {
               final pickedFile = await ImagePicker().pickVideo(
                 source: ImageSource.gallery,
@@ -416,137 +509,180 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                 provider.setVideo(File(pickedFile.path));
               }
             },
-            icon: const Icon(Icons.videocam, color: Colors.white),
-            label: const Text(
-              'انتخاب ویدیو',
-              style: TextStyle(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey.shade700,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              elevation: 5,
-            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildExerciseDrawer(BuildContext context, String userId) {
-    final exerciseProvider = Provider.of<ExerciseProvider>(context);
+  Widget _buildGlassButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white),
+        label: Text(label, style: GoogleFonts.vazirmatn(color: Colors.white)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+        ),
+      ),
+    );
+  }
 
-    return Drawer(
-      backgroundColor: Colors.black87,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Colors.yellowAccent,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(20),
-                bottomRight: Radius.circular(20),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildExerciseDrawer(BuildContext context, String userId) {
+    return Consumer<ExerciseProvider>(
+      builder: (context, provider, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            canvasColor: const Color(0xFF2A2A72), // رنگ دراور
+          ),
+          child: Drawer(
+            child: Column(
               children: [
-                Text(
-                  'تمرینات من',
-                  style: TextStyle(
-                    fontSize: 24,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFFFD700), Color(0xFFFFFF00)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'تمرینات من',
+                        style: GoogleFonts.vazirmatn(
+                          textStyle: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: FutureBuilder<List<ExerciseModel>>(
+                    future: _coachExercisesFuture,
+                    builder: (context, snapshot) {
+                      if (_coachExercisesFuture == null) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError || snapshot.data == null) {
+                        return const Center(
+                          child: Text(
+                            'خطا در بارگذاری تمرینات',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        );
+                      }
+                      final exercises = snapshot.data!;
+                      if (exercises.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'هنوز تمرینی ثبت نشده است!',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: exercises.length,
+                        itemBuilder: (context, index) {
+                          final exercise = exercises[index];
+                          return Card(
+                            color: Colors.white.withOpacity(0.1),
+                            margin: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 4,
+                            child: ListTile(
+                              title: Text(
+                                exercise.name,
+                                style: GoogleFonts.vazirmatn(
+                                  textStyle: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${exercise.category} ${exercise.targetMuscle != null ? '- ${exercise.targetMuscle}' : ''} (${exercise.countingType ?? 'نامشخص'})',
+                                style: GoogleFonts.vazirmatn(
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.yellowAccent,
+                                    ),
+                                    onPressed:
+                                        () => _editExercise(
+                                          context,
+                                          exercise,
+                                          userId,
+                                        ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () {
+                                      provider.deleteExercise(exercise.id);
+                                      _loadCoachExercises(userId, provider);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: FutureBuilder<List<ExerciseModel>>(
-              future: _coachExercisesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError || snapshot.data == null) {
-                  return const Center(
-                    child: Text(
-                      'خطا در بارگذاری تمرینات',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                }
-                final exercises = snapshot.data!;
-                if (exercises.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'هنوز تمرینی ثبت نشده است!',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: exercises.length,
-                  itemBuilder: (context, index) {
-                    final exercise = exercises[index];
-                    return Card(
-                      color: Colors.grey.shade900,
-                      margin: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 4,
-                      child: ListTile(
-                        title: Text(
-                          exercise.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${exercise.category} ${exercise.targetMuscle != null ? '- ${exercise.targetMuscle}' : ''} (${exercise.countingType ?? 'نامشخص'})',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.edit,
-                                color: Colors.yellowAccent,
-                              ),
-                              onPressed:
-                                  () =>
-                                      _editExercise(context, exercise, userId),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete,
-                                color: Colors.redAccent,
-                              ),
-                              onPressed:
-                                  () => exerciseProvider.deleteExercise(
-                                    exercise.id,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -576,12 +712,17 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
               children: [
                 Text(
                   'خطا در جستجوی تمرینات: ${snapshot.error ?? "داده‌ای دریافت نشد"}',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: GoogleFonts.vazirmatn(
+                    textStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                    ),
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
                 ElevatedButton(
-                  onPressed: () => setState(() {}), // Refresh the FutureBuilder
+                  onPressed: () => setState(() {}),
                   child: const Text('تلاش دوباره'),
                 ),
               ],
@@ -609,14 +750,16 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
             return ListTile(
               title: Text(
                 exercise.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.vazirmatn(
+                  textStyle: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               subtitle: Text(
                 '${exercise.category} (${exercise.countingType ?? 'نامشخص'})',
-                style: const TextStyle(color: Colors.grey),
+                style: GoogleFonts.vazirmatn(color: Colors.grey),
               ),
               onTap: () {
                 if (exercise.createdBy == userId) {
@@ -657,13 +800,15 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.black87,
+          backgroundColor: const Color(0xFF2A2A72),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
           ),
-          title: const Text(
+          title: Text(
             'ویرایش تمرین',
-            style: TextStyle(color: Colors.yellowAccent),
+            style: GoogleFonts.vazirmatn(
+              textStyle: const TextStyle(color: Colors.yellowAccent),
+            ),
           ),
           content: StatefulBuilder(
             builder: (context, setState) {
@@ -672,7 +817,7 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                 children: [
                   ScaleTransition(
                     scale: _scaleAnimation,
-                    child: CustomTextField(
+                    child: _buildCustomTextField(
                       controller: nameController,
                       label: 'اسم تمرین',
                       validator: (value) {
@@ -686,7 +831,7 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                   const SizedBox(height: 20),
                   ScaleTransition(
                     scale: _scaleAnimation,
-                    child: CustomTextField(
+                    child: _buildCustomTextField(
                       controller: descriptionController,
                       label: 'توضیحات (اختیاری)',
                       maxLines: 3,
@@ -695,41 +840,7 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                   const SizedBox(height: 20),
                   ScaleTransition(
                     scale: _scaleAnimation,
-                    child: DropdownButtonFormField<String>(
-                      value: selectedCountingType,
-                      decoration: InputDecoration(
-                        labelText: 'نوع شمارش',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.1),
-                        labelStyle: const TextStyle(color: Colors.yellowAccent),
-                      ),
-                      dropdownColor: Colors.black87,
-                      style: const TextStyle(color: Colors.white),
-                      iconEnabledColor: Colors.yellowAccent,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'وزن (kg)',
-                          child: Text('وزن (kg)'),
-                        ),
-                        DropdownMenuItem(value: 'تایم', child: Text('تایم')),
-                        DropdownMenuItem(value: 'تعداد', child: Text('تعداد')),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          selectedCountingType = value;
-                        });
-                        exerciseProvider.setCountingType(value);
-                      },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'لطفاً نوع شمارش رو انتخاب کن!';
-                        }
-                        return null;
-                      },
-                    ),
+                    child: _buildCountingTypeDropdown(exerciseProvider),
                   ),
                 ],
               );
@@ -738,7 +849,10 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('لغو', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                'لغو',
+                style: GoogleFonts.vazirmatn(color: Colors.grey),
+              ),
             ),
             TextButton(
               onPressed: () async {
@@ -762,15 +876,18 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('تمرین با موفقیت ویرایش شد!')),
                   );
+                  _loadCoachExercises(userId, exerciseProvider);
                 } catch (e) {
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text('خطا در ویرایش: $e')));
                 }
               },
-              child: const Text(
+              child: Text(
                 'ذخیره',
-                style: TextStyle(color: Colors.yellowAccent),
+                style: GoogleFonts.vazirmatn(
+                  textStyle: const TextStyle(color: Colors.yellowAccent),
+                ),
               ),
             ),
           ],
