@@ -388,4 +388,9 @@ class AuthProvider with ChangeNotifier {
     _authSubscription.cancel();
     super.dispose();
   }
+
+  Future<void> signOut() async {
+    await Supabase.instance.client.auth.signOut();
+    notifyListeners();
+  }
 }

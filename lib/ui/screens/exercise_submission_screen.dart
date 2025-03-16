@@ -1,16 +1,15 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:gymf/data/models/exercise_model.dart';
 import 'package:provider/provider.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/providers/exercise_provider.dart';
-import 'package:gymf/ui/widgets/custom_button.dart';
-import 'package:gymf/ui/widgets/custom_text_field.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_fonts/google_fonts.dart'; // برای فونت Vazirmatn
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:video_player/video_player.dart';
 
 class ExerciseSubmissionScreen extends StatefulWidget {
   const ExerciseSubmissionScreen({super.key});
@@ -23,17 +22,11 @@ class ExerciseSubmissionScreen extends StatefulWidget {
 class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
-
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  String? _selectedCountingType;
-
-  late ValueNotifier<String> _searchQueryNotifier;
   late Debouncer<String> _searchDebouncer;
   late StreamSubscription<String> _searchSubscription;
+  String _currentSearchQuery = '';
   Future<List<ExerciseModel>>? _coachExercisesFuture;
 
   @override
@@ -41,34 +34,17 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600), // زمان کمتر برای روان‌تر شدن
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutExpo,
-    ).drive(Tween<double>(begin: 0, end: 1));
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutExpo));
-    _scaleAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutExpo,
-    ).drive(Tween<double>(begin: 0.8, end: 1.0));
-    _controller.forward();
-
-    _searchQueryNotifier = ValueNotifier<String>('');
+      duration: const Duration(milliseconds: 800),
+    )..forward();
     _searchDebouncer = Debouncer<String>(
       const Duration(milliseconds: 500),
       initialValue: '',
     );
-
     _searchSubscription = _searchDebouncer.values.listen((value) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _searchQueryNotifier.value = value;
+      setState(() {
+        _currentSearchQuery = value;
       });
     });
-
     _nameController.addListener(() {
       _searchDebouncer.value = _nameController.text;
     });
@@ -81,35 +57,67 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
     _loadCoachExercises(authProvider.userId ?? '', exerciseProvider);
   }
 
-  void _loadCoachExercises(String userId, ExerciseProvider exerciseProvider) {
-    setState(() {
-      _coachExercisesFuture = exerciseProvider.fetchCoachExercises(userId);
-    });
-  }
-
   @override
   void dispose() {
     _searchSubscription.cancel();
     _controller.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
-    _searchQueryNotifier.dispose();
     super.dispose();
   }
 
-  void _navigateToEditExercise(ExerciseModel exercise) {
-    Navigator.pushNamed(context, '/edit-exercise', arguments: exercise);
+  void _loadCoachExercises(String userId, ExerciseProvider provider) {
+    _coachExercisesFuture = provider.fetchCoachExercises(userId);
+  }
+
+  void _submitExercise(ExerciseProvider provider) {
+    if (provider.isLoading) return; // جلوگیری از ارسال چندباره
+    provider.submitExercise(
+      name: _nameController.text,
+      category: provider.selectedCategory!,
+      targetMuscle:
+          provider.selectedCategory == 'قدرتی'
+              ? provider.selectedTargetMuscle
+              : null,
+      description:
+          _descriptionController.text.isEmpty
+              ? null
+              : _descriptionController.text,
+      onSuccess: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تمرین با موفقیت ثبت شد!')),
+        );
+        _nameController.clear();
+        _descriptionController.clear();
+        provider.resetForm();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ExerciseSubmissionScreen(),
+          ),
+        );
+      },
+      onFailure:
+          (error) => ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('خطا: $error'))),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF2A2A72), Color(0xFF009FFD)], // بنفش تیره به آبی
+          colors: [
+            Colors.black,
+            Colors.blueGrey.shade900,
+            Colors.blueAccent.shade700,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          stops: const [0.0, 0.5, 1.0],
         ),
       ),
       child: Scaffold(
@@ -118,13 +126,7 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
           title: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ScaleTransition(
-                scale: _scaleAnimation,
-                child: const Image(
-                  image: AssetImage('images/Vteem1.png'),
-                  height: 60,
-                ),
-              ),
+              Image.asset('images/Vteem1.png', height: 50).animate().scale(),
               const SizedBox(width: 10),
               Text(
                 'ثبت تمرین جدید',
@@ -133,6 +135,7 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
                     color: Colors.yellowAccent,
                     fontWeight: FontWeight.bold,
                     fontSize: 24,
+                    shadows: [Shadow(color: Colors.black54, blurRadius: 5)],
                   ),
                 ),
               ),
@@ -154,524 +157,538 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
           context,
           authProvider.userId ?? 'unknown',
         ),
-        body: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        body: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: AnimateList(
+                  interval: 100.ms,
+                  effects: [
+                    FadeEffect(duration: 600.ms),
+                    SlideEffect(begin: const Offset(0, 0.3), end: Offset.zero),
+                  ],
                   children: [
                     Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        return ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: _buildCategoryDropdown(provider),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        if (provider.selectedCategory == 'قدرتی') {
-                          return ScaleTransition(
-                            scale: _scaleAnimation,
-                            child: _buildTargetMuscleDropdown(provider),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        return ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: _buildCustomTextField(
-                            controller: _nameController,
-                            label: 'اسم تمرین',
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'اسم تمرین نمی‌تونه خالی باشه!';
-                              }
-                              return null;
-                            },
+                      builder:
+                          (context, provider, _) => _buildGlassDropdown(
+                            label: 'دسته‌بندی',
+                            value: provider.selectedCategory,
+                            items: const ['قدرتی', 'هوازی', 'تعادلی'],
+                            onChanged: provider.setCategory,
                           ),
-                        );
-                      },
                     ),
                     const SizedBox(height: 20),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _searchQueryNotifier,
-                      builder: (context, searchQuery, child) {
-                        final provider = Provider.of<ExerciseProvider>(
-                          context,
-                          listen: false,
-                        );
-                        if (searchQuery.isNotEmpty &&
-                            provider.selectedCategory != null) {
-                          return _buildSearchResults(
+                    Consumer<ExerciseProvider>(
+                      builder:
+                          (context, provider, _) =>
+                              provider.selectedCategory == 'قدرتی'
+                                  ? _buildGlassDropdown(
+                                    label: 'عضله هدف',
+                                    value: provider.selectedTargetMuscle,
+                                    items: const [
+                                      'پا',
+                                      'شکم',
+                                      'سینه',
+                                      'بازو',
+                                      'زیربغل',
+                                      'سرشانه',
+                                    ],
+                                    onChanged: provider.setTargetMuscle,
+                                  )
+                                  : const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildGlassTextField(
+                      controller: _nameController,
+                      label: 'اسم تمرین',
+                      validator:
+                          (value) =>
+                              value!.isEmpty ? 'اسم نمی‌تونه خالی باشه!' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    Consumer<ExerciseProvider>(
+                      builder:
+                          (context, provider, _) => _buildSearchWidget(
                             provider,
-                            authProvider.userId,
-                            searchQuery,
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        return ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: _buildCustomTextField(
-                            controller: _descriptionController,
-                            label: 'توضیحات (اختیاری)',
-                            maxLines: 3,
+                            authProvider.userId ?? '',
                           ),
-                        );
-                      },
+                    ),
+                    const SizedBox(height: 20),
+                    _buildGlassTextField(
+                      controller: _descriptionController,
+                      label: 'توضیحات (اختیاری)',
+                      maxLines: 3,
                     ),
                     const SizedBox(height: 20),
                     Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        return ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: _buildCountingTypeDropdown(provider),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: _buildMediaButtons(
-                        context,
-                        Provider.of<ExerciseProvider>(context, listen: false),
-                      ),
+                      builder:
+                          (context, provider, _) => _buildGlassDropdown(
+                            label: 'نوع شمارش',
+                            value: provider.selectedCountingType,
+                            items: const ['وزن (kg)', 'تایم', 'تعداد'],
+                            onChanged:
+                                (value) => provider.setCountingType(value),
+                          ),
                     ),
                     const SizedBox(height: 30),
                     Consumer<ExerciseProvider>(
-                      builder: (context, provider, child) {
-                        return ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: _buildCustomButton(
-                            text: 'ثبت تمرین',
-                            onPressed: () => _submitExercise(provider),
+                      builder:
+                          (context, provider, _) => _buildMediaRow(provider),
+                    ),
+                    const SizedBox(height: 30),
+                    Consumer<ExerciseProvider>(
+                      builder:
+                          (context, provider, _) => Column(
+                            children: [
+                              ValueListenableBuilder<double>(
+                                valueListenable: provider.uploadProgress,
+                                builder: (context, progress, child) {
+                                  return progress > 0
+                                      ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 10,
+                                        ),
+                                        child: LinearProgressIndicator(
+                                          value: progress / 100,
+                                          backgroundColor: Colors.grey
+                                              .withOpacity(0.3),
+                                          valueColor:
+                                              const AlwaysStoppedAnimation<
+                                                Color
+                                              >(Colors.yellowAccent),
+                                          minHeight: 10,
+                                        ),
+                                      )
+                                      : const SizedBox.shrink();
+                                },
+                              ),
+                              _buildNeonButton(
+                                text: 'ثبت تمرین',
+                                onPressed: () => _submitExercise(provider),
+                                isLoading: provider.isLoading,
+                              ),
+                            ],
                           ),
-                        );
-                      },
                     ),
                   ],
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassDropdown({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26.withOpacity(0.2),
+            blurRadius: 10,
+            spreadRadius: 1,
           ),
+        ],
+      ),
+      child: DropdownButtonFormField<String>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
+          border: InputBorder.none,
         ),
+        dropdownColor: Colors.blueGrey.shade800,
+        style: GoogleFonts.vazirmatn(color: Colors.white),
+        iconEnabledColor: Colors.yellowAccent,
+        items:
+            items
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                .toList(),
+        onChanged: (newValue) => onChanged(newValue!),
       ),
     );
   }
 
-  void _submitExercise(ExerciseProvider provider) {
-    if (provider.selectedCategory == null || _selectedCountingType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لطفاً دسته‌بندی و نوع شمارش رو انتخاب کن'),
-        ),
-      );
-      return;
-    }
-
-    provider.submitExercise(
-      name: _nameController.text,
-      category: provider.selectedCategory!,
-      targetMuscle:
-          provider.selectedCategory == 'قدرتی'
-              ? provider.selectedTargetMuscle
-              : null,
-      description:
-          _descriptionController.text.isEmpty
-              ? null
-              : _descriptionController.text,
-      onSuccess: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تمرین با موفقیت ثبت شد!')),
-        );
-        _nameController.clear();
-        _descriptionController.clear();
-        setState(() {
-          _selectedCountingType = null;
-        });
-        provider.resetForm();
-      },
-      onFailure: (error) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('خطا در ثبت تمرین: $error')));
-      },
-    );
-  }
-
-  Widget _buildCategoryDropdown(ExerciseProvider provider) {
-    return DropdownButtonFormField<String>(
-      value: provider.selectedCategory,
-      decoration: InputDecoration(
-        labelText: 'دسته‌بندی',
-        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-      ),
-      dropdownColor: const Color(0xFF2A2A72),
-      style: GoogleFonts.vazirmatn(color: Colors.white),
-      iconEnabledColor: Colors.yellowAccent,
-      items: const [
-        DropdownMenuItem(value: 'قدرتی', child: Text('قدرتی')),
-        DropdownMenuItem(value: 'هوازی', child: Text('هوازی')),
-        DropdownMenuItem(value: 'تعادلی', child: Text('تعادلی')),
-      ],
-      onChanged: (value) => provider.setCategory(value!),
-      validator:
-          (value) => value == null ? 'لطفاً دسته‌بندی رو انتخاب کن!' : null,
-    );
-  }
-
-  Widget _buildTargetMuscleDropdown(ExerciseProvider provider) {
-    return DropdownButtonFormField<String>(
-      value:
-          provider.selectedCategory == 'قدرتی'
-              ? provider.selectedTargetMuscle
-              : null,
-      decoration: InputDecoration(
-        labelText: 'عضله هدف',
-        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-      ),
-      dropdownColor: const Color(0xFF2A2A72),
-      style: GoogleFonts.vazirmatn(color: Colors.white),
-      iconEnabledColor: Colors.yellowAccent,
-      items: const [
-        DropdownMenuItem(value: 'پا', child: Text('پا')),
-        DropdownMenuItem(value: 'شکم', child: Text('شکم')),
-        DropdownMenuItem(value: 'سینه', child: Text('سینه')),
-        DropdownMenuItem(value: 'بازو', child: Text('بازو')),
-        DropdownMenuItem(value: 'زیربغل', child: Text('زیربغل')),
-        DropdownMenuItem(value: 'سرشانه', child: Text('سرشانه')),
-      ],
-      onChanged:
-          provider.selectedCategory == 'قدرتی'
-              ? (value) => provider.setTargetMuscle(value!)
-              : null,
-    );
-  }
-
-  Widget _buildCountingTypeDropdown(ExerciseProvider provider) {
-    return DropdownButtonFormField<String>(
-      value: _selectedCountingType ?? provider.selectedCountingType,
-      decoration: InputDecoration(
-        labelText: 'نوع شمارش',
-        labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-      ),
-      dropdownColor: const Color(0xFF2A2A72),
-      style: GoogleFonts.vazirmatn(color: Colors.white),
-      iconEnabledColor: Colors.yellowAccent,
-      items: const [
-        DropdownMenuItem(value: 'وزن (kg)', child: Text('وزن (kg)')),
-        DropdownMenuItem(value: 'تایم', child: Text('تایم')),
-        DropdownMenuItem(value: 'تعداد', child: Text('تعداد')),
-      ],
-      onChanged: (value) {
-        setState(() {
-          _selectedCountingType = value;
-          provider.setCountingType(value);
-        });
-      },
-      validator:
-          (value) => value == null ? 'لطفاً نوع شمارش رو انتخاب کن!' : null,
-    );
-  }
-
-  Widget _buildCustomTextField({
+  Widget _buildGlassTextField({
     required TextEditingController controller,
     required String label,
     int maxLines = 1,
     String? Function(String?)? validator,
   }) {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26.withOpacity(0.1),
+            color: Colors.black26.withOpacity(0.2),
             blurRadius: 10,
-            offset: const Offset(0, 5),
+            spreadRadius: 1,
           ),
         ],
       ),
       child: TextFormField(
         controller: controller,
         maxLines: maxLines,
+        style: GoogleFonts.vazirmatn(color: Colors.white),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: GoogleFonts.vazirmatn(color: Colors.white70),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
         ),
-        style: GoogleFonts.vazirmatn(color: Colors.white),
         validator: validator,
       ),
     );
   }
 
-  Widget _buildCustomButton({
-    required String text,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.yellowAccent, const Color(0xFFFFD700)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.yellowAccent.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-        ),
-        child: Text(
-          text,
-          style: GoogleFonts.vazirmatn(
-            textStyle: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMediaButtons(BuildContext context, ExerciseProvider provider) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  Widget _buildMediaRow(ExerciseProvider provider) {
+    return Column(
       children: [
-        ScaleTransition(
-          scale: _scaleAnimation,
-          child: _buildGlassButton(
-            icon: Icons.image,
-            label: 'انتخاب عکس',
-            onPressed: () async {
-              final pickedFile = await ImagePicker().pickImage(
-                source: ImageSource.gallery,
-              );
-              if (pickedFile != null) {
-                provider.setImage(File(pickedFile.path));
-              }
-            },
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildMediaButton(
+              icon: Icons.image,
+              label: 'عکس',
+              file: provider.selectedImage,
+              onPressed: () async {
+                final pickedFile = await ImagePicker().pickImage(
+                  source: ImageSource.gallery,
+                );
+                if (pickedFile != null) {
+                  provider.setImage(File(pickedFile.path));
+                }
+              },
+            ),
+            _buildMediaButton(
+              icon: Icons.videocam,
+              label: 'ویدیو',
+              file: provider.selectedVideo,
+              onPressed: () async {
+                final pickedFile = await ImagePicker().pickVideo(
+                  source: ImageSource.gallery,
+                );
+                if (pickedFile != null) {
+                  provider.setVideo(File(pickedFile.path));
+                }
+              },
+            ),
+          ],
         ),
-        ScaleTransition(
-          scale: _scaleAnimation,
-          child: _buildGlassButton(
-            icon: Icons.videocam,
-            label: 'انتخاب ویدیو',
-            onPressed: () async {
-              final pickedFile = await ImagePicker().pickVideo(
-                source: ImageSource.gallery,
-              );
-              if (pickedFile != null) {
-                provider.setVideo(File(pickedFile.path));
-              }
-            },
-          ),
-        ),
+        const SizedBox(height: 20),
+        if (provider.selectedImage != null || provider.selectedVideo != null)
+          _buildMediaPreview(provider),
       ],
-    );
+    ).animate().fadeIn(duration: 400.ms);
   }
 
-  Widget _buildGlassButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
+  Widget _buildMediaPreview(ExerciseProvider provider) {
     return Container(
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.yellowAccent.withOpacity(0.3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26.withOpacity(0.1),
+            color: Colors.black26.withOpacity(0.2),
             blurRadius: 10,
-            offset: const Offset(0, 5),
+            spreadRadius: 1,
           ),
         ],
       ),
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white),
-        label: Text(label, style: GoogleFonts.vazirmatn(color: Colors.white)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
+      child: Column(
+        children: [
+          if (provider.selectedImage != null)
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.file(
+                    provider.selectedImage!,
+                    height: 150,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                Positioned(
+                  top: 5,
+                  right: 5,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
+                        onPressed: () => provider.clearImage(),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.edit,
+                          color: Colors.yellowAccent,
+                        ),
+                        onPressed: () async {
+                          final pickedFile = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                          );
+                          if (pickedFile != null) {
+                            provider.setImage(File(pickedFile.path));
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack),
+          if (provider.selectedImage != null && provider.selectedVideo != null)
+            const SizedBox(height: 10),
+          if (provider.selectedVideo != null)
+            VideoPreviewWidget(videoFile: provider.selectedVideo!),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    File? file,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 120,
+        height: 100,
+        decoration: BoxDecoration(
+          color:
+              file != null
+                  ? Colors.green.withOpacity(0.2)
+                  : Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.yellowAccent.withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black26.withOpacity(0.2),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.yellowAccent, size: 30),
+            const SizedBox(height: 5),
+            Text(
+              file != null ? 'انتخاب شد' : label,
+              style: GoogleFonts.vazirmatn(color: Colors.white, fontSize: 14),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNeonButton({
+    required String text,
+    required VoidCallback onPressed,
+    required bool isLoading,
+  }) {
+    return GestureDetector(
+      onTap: isLoading ? null : onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 30),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Colors.yellowAccent, Colors.orangeAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.yellowAccent.withOpacity(0.5),
+              blurRadius: 15,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child:
+            isLoading
+                ? const CircularProgressIndicator(color: Colors.black)
+                : Text(
+                  text,
+                  style: GoogleFonts.vazirmatn(
+                    textStyle: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+      ),
+    ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack);
+  }
+
+  Widget _buildSearchWidget(ExerciseProvider provider, String userId) {
+    if (_currentSearchQuery.length < 3 || provider.selectedCategory == null) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<List<ExerciseModel>>(
+      future: provider.searchExercises(
+        category: provider.selectedCategory,
+        targetMuscle:
+            provider.selectedCategory == 'قدرتی'
+                ? provider.selectedTargetMuscle
+                : null,
+        searchQuery: _currentSearchQuery,
+        userId: userId,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const Text(
+            'خطا در جستجو',
+            style: TextStyle(color: Colors.white),
+          );
+        }
+        final results = snapshot.data!;
+        return Container(
+          constraints: const BoxConstraints(maxHeight: 200),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: results.length,
+            itemBuilder: (context, index) {
+              final exercise = results[index];
+              return Card(
+                color: Colors.white.withOpacity(0.1),
+                elevation: 5,
+                margin: const EdgeInsets.symmetric(vertical: 5),
+                child: ListTile(
+                  title: Text(
+                    exercise.name,
+                    style: GoogleFonts.vazirmatn(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    '${exercise.category} (${exercise.countingType ?? 'نامشخص'})',
+                    style: GoogleFonts.vazirmatn(color: Colors.white70),
+                  ),
+                  onTap:
+                      exercise.createdBy == userId
+                          ? () => Navigator.pushNamed(
+                            context,
+                            '/edit-exercise',
+                            arguments: exercise,
+                          )
+                          : null,
+                ),
+              ).animate().fadeIn(duration: 300.ms, delay: (index * 50).ms);
+            },
+          ),
+        );
+      },
     );
   }
 
   Widget _buildExerciseDrawer(BuildContext context, String userId) {
     return Consumer<ExerciseProvider>(
-      builder: (context, provider, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            canvasColor: const Color(0xFF2A2A72), // رنگ دراور
-          ),
-          child: Drawer(
+      builder:
+          (context, provider, _) => Drawer(
+            backgroundColor: Colors.blueGrey.shade900,
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFFFD700), Color(0xFFFFFF00)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'تمرینات من',
-                        style: GoogleFonts.vazirmatn(
-                          textStyle: const TextStyle(
-                            fontSize: 24,
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                  padding: const EdgeInsets.all(20),
+                  color: Colors.yellowAccent,
+                  child: Text(
+                    'تمرینات من',
+                    style: GoogleFonts.vazirmatn(
+                      textStyle: const TextStyle(
+                        fontSize: 24,
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
+                    ),
                   ),
                 ),
                 Expanded(
                   child: FutureBuilder<List<ExerciseModel>>(
                     future: _coachExercisesFuture,
                     builder: (context, snapshot) {
-                      if (_coachExercisesFuture == null) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      if (snapshot.hasError || snapshot.data == null) {
+                      if (snapshot.hasError || !snapshot.hasData) {
                         return const Center(
                           child: Text(
-                            'خطا در بارگذاری تمرینات',
+                            'خطا در بارگذاری',
                             style: TextStyle(color: Colors.white),
                           ),
                         );
                       }
                       final exercises = snapshot.data!;
-                      if (exercises.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'هنوز تمرینی ثبت نشده است!',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        );
-                      }
                       return ListView.builder(
                         itemCount: exercises.length,
                         itemBuilder: (context, index) {
                           final exercise = exercises[index];
-                          return Card(
-                            color: Colors.white.withOpacity(0.1),
-                            margin: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 10,
+                          return ListTile(
+                            title: Text(
+                              exercise.name,
+                              style: GoogleFonts.vazirmatn(color: Colors.white),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            subtitle: Text(
+                              '${exercise.category} - ${exercise.countingType ?? 'نامشخص'}',
+                              style: GoogleFonts.vazirmatn(
+                                color: Colors.white70,
+                              ),
                             ),
-                            elevation: 4,
-                            child: ListTile(
-                              title: Text(
-                                exercise.name,
-                                style: GoogleFonts.vazirmatn(
-                                  textStyle: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.yellowAccent,
                                   ),
+                                  onPressed:
+                                      () => Navigator.pushNamed(
+                                        context,
+                                        '/edit-exercise',
+                                        arguments: exercise,
+                                      ),
                                 ),
-                              ),
-                              subtitle: Text(
-                                '${exercise.category} ${exercise.targetMuscle != null ? '- ${exercise.targetMuscle}' : ''} (${exercise.countingType ?? 'نامشخص'})',
-                                style: GoogleFonts.vazirmatn(
-                                  color: Colors.grey,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.redAccent,
+                                  ),
+                                  onPressed: () {
+                                    provider.deleteExercise(exercise.id);
+                                    _loadCoachExercises(userId, provider);
+                                  },
                                 ),
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.edit,
-                                      color: Colors.yellowAccent,
-                                    ),
-                                    onPressed:
-                                        () => _editExercise(
-                                          context,
-                                          exercise,
-                                          userId,
-                                        ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.redAccent,
-                                    ),
-                                    onPressed: () {
-                                      provider.deleteExercise(exercise.id);
-                                      _loadCoachExercises(userId, provider);
-                                    },
-                                  ),
-                                ],
-                              ),
+                              ],
                             ),
+                          ).animate().slideX(
+                            begin: 0.3,
+                            end: 0,
+                            duration: 400.ms,
                           );
                         },
                       );
@@ -681,218 +698,129 @@ class _ExerciseSubmissionScreenState extends State<ExerciseSubmissionScreen>
               ],
             ),
           ),
-        );
-      },
     );
   }
+}
 
-  Widget _buildSearchResults(
-    ExerciseProvider provider,
-    String? userId,
-    String searchQuery,
-  ) {
-    return FutureBuilder<List<ExerciseModel>>(
-      future: provider.searchExercises(
-        category: provider.selectedCategory,
-        targetMuscle:
-            provider.selectedCategory == 'قدرتی'
-                ? provider.selectedTargetMuscle
-                : null,
-        searchQuery: searchQuery,
-        userId: userId ?? '',
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || snapshot.data == null) {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Text(
-                  'خطا در جستجوی تمرینات: ${snapshot.error ?? "داده‌ای دریافت نشد"}',
-                  style: GoogleFonts.vazirmatn(
-                    textStyle: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () => setState(() {}),
-                  child: const Text('تلاش دوباره'),
-                ),
-              ],
-            ),
-          );
-        }
+class VideoPreviewWidget extends StatefulWidget {
+  final File videoFile;
 
-        final filteredExercises = snapshot.data!;
-        if (filteredExercises.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'تمرینی یافت نشد!',
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-          );
-        }
+  const VideoPreviewWidget({super.key, required this.videoFile});
 
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: filteredExercises.length,
-          itemBuilder: (context, index) {
-            final exercise = filteredExercises[index];
-            return ListTile(
-              title: Text(
-                exercise.name,
-                style: GoogleFonts.vazirmatn(
-                  textStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              subtitle: Text(
-                '${exercise.category} (${exercise.countingType ?? 'نامشخص'})',
-                style: GoogleFonts.vazirmatn(color: Colors.grey),
-              ),
-              onTap: () {
-                if (exercise.createdBy == userId) {
-                  _navigateToEditExercise(exercise);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'شما فقط به تمرین‌های ثبت‌شده توسط خودتان دسترسی دارید.',
-                      ),
-                    ),
-                  );
-                }
-              },
-            );
-          },
-        );
-      },
-    );
+  @override
+  _VideoPreviewWidgetState createState() => _VideoPreviewWidgetState();
+}
+
+class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
+  late VideoPlayerController _videoController;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
   }
 
-  void _editExercise(
-    BuildContext context,
-    ExerciseModel exercise,
-    String userId,
-  ) {
-    final exerciseProvider = Provider.of<ExerciseProvider>(
-      context,
-      listen: false,
-    );
-    final nameController = TextEditingController(text: exercise.name);
-    final descriptionController = TextEditingController(
-      text: exercise.description ?? '',
-    );
-    String? selectedCountingType = exercise.countingType;
+  void _initializeVideo() {
+    _videoController = VideoPlayerController.file(widget.videoFile)
+      ..initialize()
+          .then((_) {
+            setState(() {
+              _isInitialized = true;
+            });
+          })
+          .catchError((e) {
+            print('❌ خطا در مقداردهی ویدیو: $e');
+            setState(() {
+              _isInitialized = false;
+            });
+          });
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2A2A72),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: Text(
-            'ویرایش تمرین',
-            style: GoogleFonts.vazirmatn(
-              textStyle: const TextStyle(color: Colors.yellowAccent),
-            ),
-          ),
-          content: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
+  @override
+  void dispose() {
+    _videoController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = Provider.of<ExerciseProvider>(context, listen: false);
+    return Stack(
+      children: [
+        _isInitialized
+            ? ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  ScaleTransition(
-                    scale: _scaleAnimation,
-                    child: _buildCustomTextField(
-                      controller: nameController,
-                      label: 'اسم تمرین',
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'اسم تمرین نمی‌تونه خالی باشه!';
-                        }
-                        return null;
-                      },
-                    ),
+                  SizedBox(
+                    height: 150,
+                    width: double.infinity,
+                    child: VideoPlayer(_videoController),
                   ),
-                  const SizedBox(height: 20),
-                  ScaleTransition(
-                    scale: _scaleAnimation,
-                    child: _buildCustomTextField(
-                      controller: descriptionController,
-                      label: 'توضیحات (اختیاری)',
-                      maxLines: 3,
+                  IconButton(
+                    icon: Icon(
+                      _videoController.value.isPlaying
+                          ? Icons.pause
+                          : Icons.play_circle_fill,
+                      size: 50,
+                      color: Colors.yellowAccent,
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  ScaleTransition(
-                    scale: _scaleAnimation,
-                    child: _buildCountingTypeDropdown(exerciseProvider),
+                    onPressed: () {
+                      if (_videoController.value.isPlaying) {
+                        _videoController.pause();
+                      } else {
+                        _videoController.play();
+                      }
+                      setState(() {});
+                    },
                   ),
                 ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'لغو',
-                style: GoogleFonts.vazirmatn(color: Colors.grey),
               ),
+            ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack)
+            : const SizedBox(
+              height: 150,
+              child: Center(child: CircularProgressIndicator()),
             ),
-            TextButton(
-              onPressed: () async {
-                try {
-                  final updates = {
-                    'name': nameController.text,
-                    'category': exercise.category,
-                    'target_muscle':
-                        exercise.category == 'قدرتی'
-                            ? exercise.targetMuscle
-                            : null,
-                    'created_by': userId,
-                    'description':
-                        descriptionController.text.isEmpty
-                            ? null
-                            : descriptionController.text,
-                    'counting_type': selectedCountingType,
-                  };
-                  await exerciseProvider.updateExercise(exercise.id, updates);
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تمرین با موفقیت ویرایش شد!')),
-                  );
-                  _loadCoachExercises(userId, exerciseProvider);
-                } catch (e) {
-                  ScaffoldMessenger.of(
+        Positioned(
+          top: 5,
+          right: 5,
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                onPressed: () {
+                  provider.clearVideo();
+                  Navigator.pushReplacement(
                     context,
-                  ).showSnackBar(SnackBar(content: Text('خطا در ویرایش: $e')));
-                }
-              },
-              child: Text(
-                'ذخیره',
-                style: GoogleFonts.vazirmatn(
-                  textStyle: const TextStyle(color: Colors.yellowAccent),
-                ),
+                    MaterialPageRoute(
+                      builder: (context) => const ExerciseSubmissionScreen(),
+                    ),
+                  );
+                },
               ),
-            ),
-          ],
-        );
-      },
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.yellowAccent),
+                onPressed: () async {
+                  final pickedFile = await ImagePicker().pickVideo(
+                    source: ImageSource.gallery,
+                  );
+                  if (pickedFile != null) {
+                    provider.setVideo(File(pickedFile.path));
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ExerciseSubmissionScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -11,19 +11,23 @@ class ExerciseProvider with ChangeNotifier {
   String? _selectedCategory;
   String? _selectedTargetMuscle;
   String? _selectedCountingType;
-  File? _selectedImage;
-  File? _selectedVideo;
+  File? selectedImage;
+  File? selectedVideo;
+  bool _shouldNotify = true; // پرچم برای کنترل notifyListeners
   bool _isLoading = false;
   List<ExerciseModel> _coachExercises = [];
   List<ExerciseModel> get coachExercises => _coachExercises;
 
   final ExerciseService _exerciseService = ExerciseService();
   final Uuid _uuid = const Uuid();
-  late AuthProvider _authProvider;
+  final ValueNotifier<double> uploadProgress = ValueNotifier<double>(
+    0.0,
+  ); // برای پیشرفت
+  late AuthProvider authProvider;
+  List<ExerciseModel> _exercises = [];
+  List<ExerciseModel> get exercises => _exercises;
 
-  final bool _isSearching = false;
   List<ExerciseModel> _searchResults = [];
-  final String _searchQuery = '';
 
   String? get selectedCategory => _selectedCategory;
   String? get selectedTargetMuscle => _selectedTargetMuscle;
@@ -31,7 +35,66 @@ class ExerciseProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   ExerciseProvider(BuildContext context) {
-    _authProvider = Provider.of<AuthProvider>(context, listen: false);
+    authProvider = Provider.of<AuthProvider>(context, listen: false);
+  }
+
+  Future<void> fetchAllExercises() async {
+    try {
+      print('🔄 گرفتن همه تمرین‌ها...');
+      final response = await Supabase.instance.client
+          .from('exercises')
+          .select('''
+            *,
+            profiles:created_by (username)
+          ''')
+          .order('created_at', ascending: false);
+
+      final data = response as List<dynamic>;
+      _exercises =
+          data.map((json) {
+            final username =
+                json['profiles'] != null
+                    ? json['profiles']['username'] as String
+                    : 'ناشناس';
+            return ExerciseModel.fromJson(
+              json,
+            ).copyWith(creatorUsername: username);
+          }).toList();
+
+      print('✅ تعداد تمرین‌های گرفته‌شده: ${_exercises.length}');
+      notifyListeners();
+    } catch (e, stacktrace) {
+      print('❌ خطا در گرفتن همه تمرین‌ها: $e');
+      print('🔍 جزئیات بیشتر: $stacktrace');
+      rethrow;
+    }
+  }
+
+  Future<String?> getUserName(String userId) async {
+    if (!_isValidUUID(userId)) {
+      print('⚠️ userId نامعتبر است: $userId');
+      return null;
+    }
+    try {
+      final response =
+          await Supabase.instance.client
+              .from('profiles')
+              .select('username')
+              .eq('id', userId)
+              .maybeSingle();
+
+      if (response == null) {
+        print('❌ کاربر با ID $userId پیدا نشد');
+        return null;
+      }
+
+      final username = response['username'] as String?;
+      print('✅ نام کاربر برای $userId: $username');
+      return username;
+    } catch (e) {
+      print('❌ خطا در گرفتن نام کاربر: $e');
+      return null;
+    }
   }
 
   void setCategory(String category) {
@@ -58,16 +121,34 @@ class ExerciseProvider with ChangeNotifier {
   }
 
   void setImage(File image) {
-    if (_selectedImage != image) {
-      _selectedImage = image;
-      notifyListeners();
+    if (selectedImage != image) {
+      selectedImage = image;
+      if (_shouldNotify) notifyListeners();
+      print('📸 تصویر جدید انتخاب شد: ${image.path}');
     }
   }
 
   void setVideo(File video) {
-    if (_selectedVideo != video) {
-      _selectedVideo = video;
-      notifyListeners();
+    if (selectedVideo != video) {
+      selectedVideo = video;
+      if (_shouldNotify) notifyListeners();
+      print('🎥 ویدیو جدید انتخاب شد: ${video.path}');
+    }
+  }
+
+  void clearImage() {
+    if (selectedImage != null) {
+      selectedImage = null;
+      if (_shouldNotify) notifyListeners();
+      print('🗑️ تصویر حذف شد');
+    }
+  }
+
+  void clearVideo() {
+    if (selectedVideo != null) {
+      selectedVideo = null;
+      if (_shouldNotify) notifyListeners();
+      print('🗑️ ویدیو حذف شد');
     }
   }
 
@@ -85,28 +166,48 @@ class ExerciseProvider with ChangeNotifier {
       _selectedCountingType = null;
       changed = true;
     }
-    if (_selectedImage != null) {
-      _selectedImage = null;
+    if (selectedImage != null) {
+      selectedImage = null;
       changed = true;
     }
-    if (_selectedVideo != null) {
-      _selectedVideo = null;
+    if (selectedVideo != null) {
+      selectedVideo = null;
       changed = true;
     }
-    if (changed) notifyListeners();
+    if (changed && _shouldNotify) notifyListeners();
   }
 
-  Future<String?> _uploadFile(File file, String path) async {
+  Future<String> uploadFile(File file, String path) async {
     try {
+      final user = Supabase.instance.client.auth.currentUser;
+      print('👤 کاربر فعلی: ${user?.id ?? "لاگین نشده"}');
+      print('⬆️ شروع آپلود فایل: $path');
+      print('📂 مسیر فایل محلی: ${file.path}');
       await Supabase.instance.client.storage
-          .from('exercise_media')
-          .upload(path, file);
-      return Supabase.instance.client.storage
-          .from('exercise_media')
+          .from('exercise-media')
+          .upload(
+            path,
+            file,
+            fileOptions: FileOptions(
+              contentType:
+                  file.path.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg',
+            ),
+          );
+      final url = Supabase.instance.client.storage
+          .from('exercise-media')
           .getPublicUrl(path);
-    } catch (e) {
-      debugPrint('❌ خطا در آپلود فایل: $e');
-      return null;
+      // چک کردن اینکه URL معتبر است
+      final uri = Uri.tryParse(url);
+      if (uri == null ||
+          (!uri.scheme.contains('http') && !uri.scheme.contains('https'))) {
+        throw Exception('URL عمومی نامعتبر است: $url');
+      }
+      print('✅ URL عمومی تولید شد: $url');
+      return url;
+    } catch (e, stacktrace) {
+      print('❌ خطا در آپلود فایل: $e');
+      print('🔍 جزئیات بیشتر: $stacktrace');
+      throw Exception('خطا در آپلود فایل: $e');
     }
   }
 
@@ -118,7 +219,7 @@ class ExerciseProvider with ChangeNotifier {
     required VoidCallback onSuccess,
     required Function(String) onFailure,
   }) async {
-    if (_authProvider.currentUser == null) {
+    if (authProvider.currentUser == null) {
       onFailure('کاربر وارد نشده است.');
       return;
     }
@@ -131,7 +232,8 @@ class ExerciseProvider with ChangeNotifier {
     }
 
     _isLoading = true;
-    // notifyListeners(); // فقط توی پایان فراخوانی می‌کنیم
+    _shouldNotify = false; // موقع آپلود آپدیت نکن
+    notifyListeners();
 
     try {
       final existingExercise = await _checkDuplicateExercise(
@@ -140,15 +242,11 @@ class ExerciseProvider with ChangeNotifier {
         targetMuscle,
       );
       if (existingExercise != null && existingExercise.id.isNotEmpty) {
-        if (existingExercise.createdBy == _authProvider.userId) {
+        if (existingExercise.createdBy == authProvider.userId) {
           onFailure('این تمرین قبلاً توسط شما ثبت شده. به صفحه ویرایش بروید.');
-          _isLoading = false;
-          notifyListeners();
           return;
         } else {
           onFailure('این تمرین قبلاً توسط کاربر دیگری ثبت شده است.');
-          _isLoading = false;
-          notifyListeners();
           return;
         }
       }
@@ -157,42 +255,62 @@ class ExerciseProvider with ChangeNotifier {
       String? videoUrl;
       final exerciseId = _uuid.v4();
 
-      if (_selectedImage != null) {
-        imageUrl = await _uploadFile(
-          _selectedImage!,
-          '${_authProvider.currentUser!.username}/$exerciseId/image.jpg',
+      print(
+        '📸 وضعیت تصویر: ${selectedImage != null ? "انتخاب شده (${selectedImage!.path})" : "خالی"}',
+      );
+      print(
+        '🎥 وضعیت ویدیو: ${selectedVideo != null ? "انتخاب شده (${selectedVideo!.path})" : "خالی"}',
+      );
+
+      // شروع پروگرس بار
+      uploadProgress.value = 0.0;
+
+      if (selectedImage != null) {
+        uploadProgress.value = 25.0; // 25% برای آپلود تصویر
+        imageUrl = await uploadFile(
+          selectedImage!,
+          '${authProvider.currentUser!.username}/$exerciseId/image.jpg',
         );
+        print('🌄 URL تصویر: $imageUrl');
       }
 
-      if (_selectedVideo != null) {
-        videoUrl = await _uploadFile(
-          _selectedVideo!,
-          '${_authProvider.currentUser!.username}/$exerciseId/video.mp4',
+      if (selectedVideo != null) {
+        uploadProgress.value =
+            selectedImage != null ? 50.0 : 25.0; // 25% یا 50% برای آپلود ویدیو
+        videoUrl = await uploadFile(
+          selectedVideo!,
+          '${authProvider.currentUser!.username}/$exerciseId/video.mp4',
         );
+        print('🎬 URL ویدیو: $videoUrl');
       }
 
+      // اتمام آپلود و ذخیره
+      uploadProgress.value = 75.0; // 75% برای پردازش
       ExerciseModel exercise = ExerciseModel(
         id: exerciseId,
         category: category,
         targetMuscle: category == 'قدرتی' ? targetMuscle : null,
         name: name,
-        createdBy: _authProvider.userId ?? '',
+        createdBy: authProvider.userId ?? '',
+        creatorUsername: authProvider.currentUser?.username ?? 'ناشناس',
         description: description,
-        imageUrl: imageUrl ?? '',
-        videoUrl: videoUrl ?? '',
+        imageUrl: imageUrl,
+        videoUrl: videoUrl,
         countingType: _selectedCountingType,
       );
 
+      print('💾 مدل تمرین قبل از ذخیره: ${exercise.toJson()}');
       await _exerciseService.addExercise(exercise);
+      uploadProgress.value = 100.0; // 100% بعد از ذخیره
 
       onSuccess();
       resetForm();
-      await fetchCoachExercises(_authProvider.userId ?? '');
-      _isLoading = false;
-      notifyListeners();
+      await fetchCoachExercises(authProvider.userId ?? '');
     } catch (e) {
-      _isLoading = false;
       onFailure('خطا در ثبت تمرین: $e');
+    } finally {
+      _isLoading = false;
+      _shouldNotify = true; // بعد ثبت دوباره فعال کن
       notifyListeners();
     }
   }
@@ -212,25 +330,15 @@ class ExerciseProvider with ChangeNotifier {
                 ? exercise.targetMuscle == targetMuscle
                 : true),
         orElse:
-            () => ExerciseModel(
-              id: '',
-              name: '',
-              category: '',
-              createdBy: '',
-              description: '',
-              imageUrl: '',
-              videoUrl: '',
-              countingType: '',
-            ),
+            () => ExerciseModel(id: '', name: '', category: '', createdBy: ''),
       );
     } catch (e) {
-      debugPrint('❌ خطا در چک کردن تمرین تکراری: $e');
+      print('❌ خطا در چک کردن تمرین تکراری: $e');
       return null;
     }
   }
 
   Future<List<ExerciseModel>> fetchCoachExercises(String userId) async {
-    print('🔄 بارگذاری تمرینات برای userId: $userId');
     if (!_isValidUUID(userId)) {
       print('⚠️ userId نامعتبر است: $userId');
       return [];
@@ -241,11 +349,10 @@ class ExerciseProvider with ChangeNotifier {
       );
       _coachExercises =
           exercises.where((exercise) => exercise.createdBy == userId).toList();
-      print('✅ تعداد تمرینات بارگذاری‌شده: ${_coachExercises.length}');
       notifyListeners();
       return _coachExercises;
     } catch (e) {
-      debugPrint('❌ خطا در دریافت تمرینات: $e');
+      print('❌ خطا در دریافت تمرینات: $e');
       return [];
     }
   }
@@ -256,18 +363,15 @@ class ExerciseProvider with ChangeNotifier {
     required String searchQuery,
     required String userId,
   }) async {
-    print(
-      '🔍 جستجو با پارامترها: category=$category, targetMuscle=$targetMuscle, searchQuery=$searchQuery, userId=$userId',
-    );
     if (category == null || searchQuery.isEmpty) {
-      print('⚠️ دسته‌بندی یا جستجو خالی است.');
+      print('🔍 سرچ رد شد: دسته‌بندی یا کوئری خالیه');
       return [];
     }
     try {
+      print('🔍 شروع سرچ: $searchQuery');
       final exercises = await _exerciseService.getExercises().timeout(
         const Duration(seconds: 10),
       );
-      print('📊 تعداد کل تمرینات دریافت‌شده: ${exercises.length}');
       _searchResults =
           exercises.where((exercise) {
             final matchesCategory = exercise.category == category;
@@ -278,42 +382,37 @@ class ExerciseProvider with ChangeNotifier {
             final matchesName = exercise.name.toLowerCase().contains(
               searchQuery.toLowerCase(),
             );
-            print(
-              '📌 بررسی تمرین: ${exercise.name}, matchesCategory=$matchesCategory, matchesMuscle=$matchesMuscle, matchesName=$matchesName',
-            );
             return matchesCategory && matchesMuscle && matchesName;
           }).toList();
-      print('✅ تعداد نتایج جستجو: ${_searchResults.length}');
+      print('✅ سرچ تموم شد: ${_searchResults.length} نتیجه');
       return _searchResults;
     } catch (e) {
-      debugPrint('❌ خطا در جستجوی تمرینات: $e');
+      print('❌ خطا در جستجوی تمرینات: $e');
       return [];
     }
   }
 
   Future<void> deleteExercise(String exerciseId) async {
     if (!_isValidUUID(exerciseId)) return;
-
     try {
       await _exerciseService.deleteExercise(exerciseId);
       _coachExercises.removeWhere((exercise) => exercise.id == exerciseId);
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ خطا در حذف تمرین: $e');
+      print('❌ خطا در حذف تمرین: $e');
     }
   }
 
   Future<void> updateExercise(String id, Map<String, dynamic> updates) async {
     if (!_isValidUUID(id)) return;
-
     try {
       await _exerciseService.updateExercise(id, {
         ...updates,
         'updated_at': DateTime.now().toIso8601String(),
       });
-      await fetchCoachExercises(_authProvider.userId ?? '');
+      await fetchCoachExercises(authProvider.userId ?? '');
     } catch (e) {
-      debugPrint('❌ خطا در بروزرسانی تمرین: $e');
+      print('❌ خطا در بروزرسانی تمرین: $e');
     }
   }
 

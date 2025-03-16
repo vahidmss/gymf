@@ -3,6 +3,7 @@ import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/providers/exercise_provider.dart';
 import 'package:gymf/ui/screens/EditExerciseScreen.dart';
+import 'package:gymf/ui/screens/ExerciseListScreen.dart';
 import 'package:gymf/ui/screens/WorkoutPlanScreen.dart';
 import 'package:gymf/ui/screens/auth/login_screen.dart';
 import 'package:gymf/ui/screens/auth/signup_screen.dart';
@@ -114,44 +115,57 @@ class MyApp extends StatelessWidget {
             return authProvider;
           },
         ),
-        ChangeNotifierProvider(create: (context) => ExerciseProvider(context)),
+        ChangeNotifierProvider(
+          create: (context) => ExerciseProvider(context), // اصلاح با context
+        ),
         ChangeNotifierProxyProvider<AuthProvider, WorkoutPlanProvider>(
           create: (context) => WorkoutPlanProvider(context),
           update: (context, auth, previous) {
             if (previous != null) {
               previous.updateAuth(auth);
             }
-            return WorkoutPlanProvider(context);
+            return WorkoutPlanProvider(context)..updateAuth(auth);
           },
         ),
       ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Gym App',
-        theme: ThemeData.dark().copyWith(
-          primaryColor: Colors.yellow,
-          colorScheme: ColorScheme.fromSwatch().copyWith(
-            primary: Colors.yellow,
-            secondary: Colors.amber,
-          ),
-        ),
-        home: const AuthWrapper(),
-        routes: {
-          '/login': (context) => const LoginScreen(),
-          '/signup': (context) => const SignupScreen(),
-          '/complete-profile': (context) => const CompleteProfileScreen(),
-          '/dashboard': (context) => DashboardScreen(),
-          '/home': (context) => HomeScreen(),
-          '/workout-plan': (context) => const WorkoutPlanScreen(),
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == '/edit-exercise') {
-            final exercise = settings.arguments as ExerciseModel;
-            return MaterialPageRoute(
-              builder: (context) => EditExerciseScreen(exercise: exercise),
-            );
-          }
-          return null;
+      child: Builder(
+        builder: (context) {
+          // دسترسی به context بعد از مقداردهی Providerها
+          final exerciseProvider = Provider.of<ExerciseProvider>(
+            context,
+            listen: false,
+          );
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Gym App',
+            theme: ThemeData.dark().copyWith(
+              primaryColor: Colors.yellow,
+              colorScheme: ColorScheme.fromSwatch().copyWith(
+                primary: Colors.yellow,
+                secondary: Colors.amber,
+              ),
+            ),
+            home: const AuthWrapper(),
+            routes: {
+              '/login': (context) => const LoginScreen(),
+              '/signup': (context) => const SignupScreen(),
+              '/complete-profile': (context) => const CompleteProfileScreen(),
+              '/dashboard': (context) => DashboardScreen(),
+              '/home': (context) => HomeScreen(),
+              '/workout-plan': (context) => const WorkoutPlanScreen(),
+              '/exercise-list':
+                  (context) => const ExerciseListScreen(), // مسیر جدید
+            },
+            onGenerateRoute: (settings) {
+              if (settings.name == '/edit-exercise') {
+                final exercise = settings.arguments as ExerciseModel;
+                return MaterialPageRoute(
+                  builder: (context) => EditExerciseScreen(exercise: exercise),
+                );
+              }
+              return null;
+            },
+          );
         },
       ),
     );

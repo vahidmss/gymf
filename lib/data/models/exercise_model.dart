@@ -3,24 +3,24 @@ import 'package:uuid/uuid.dart';
 class ExerciseModel {
   final String id;
   final String category;
-  final String? targetMuscle; // فقط برای تمرین‌های قدرتی
+  final String? targetMuscle;
   final String name;
-  final String
-  createdBy; // تغییر از coachUsername به createdBy (UUID به‌صورت String)
+  final String createdBy;
+  final String? creatorUsername; // اضافه کردن نام کاربر برای نمایش
   final String? description;
   final String? imageUrl;
   final String? videoUrl;
-  final String? countingType; // نوع شمارش (تعدادی، kg، یا زمان)
+  final String? countingType;
   final DateTime createdAt;
-  final DateTime? updatedAt; // اضافه کردن updatedAt برای هماهنگی با دیتابیس
+  final DateTime? updatedAt;
 
-  // سازنده اصلی
   ExerciseModel({
     String? id,
     required this.category,
     this.targetMuscle,
     required this.name,
-    required this.createdBy, // تغییر از coachUsername به createdBy
+    required this.createdBy,
+    this.creatorUsername, // جدید
     this.description,
     this.imageUrl,
     this.videoUrl,
@@ -30,13 +30,13 @@ class ExerciseModel {
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now();
 
-  // سازنده خالی برای استفاده در شرایطی که نیاز به مدل خالی داریم
   factory ExerciseModel.empty() {
     return ExerciseModel(
       id: '',
       category: '',
       name: '',
       createdBy: '',
+      creatorUsername: null,
       description: null,
       imageUrl: null,
       videoUrl: null,
@@ -46,38 +46,38 @@ class ExerciseModel {
     );
   }
 
-  // تبدیل از JSON به مدل
   factory ExerciseModel.fromJson(Map<String, dynamic> json) {
     return ExerciseModel(
-      id: json['id'] ?? const Uuid().v4(),
-      category: json['category'] ?? 'بدون دسته‌بندی',
-      targetMuscle: json['target_muscle'],
-      name: json['name'] ?? 'بدون نام',
-      createdBy:
-          json['created_by'] ?? '', // تغییر از coach_username به created_by
-      description: json['description'],
-      imageUrl: json['image_url'],
-      videoUrl: json['video_url'],
-      countingType: json['counting_type'],
+      id: json['id'] as String? ?? const Uuid().v4(),
+      category: json['category'] as String? ?? 'بدون دسته‌بندی',
+      targetMuscle: json['target_muscle'] as String?,
+      name: json['name'] as String? ?? 'بدون نام',
+      createdBy: json['created_by'] as String? ?? '',
+      creatorUsername: json['creator_username'] as String?, // جدید
+      description: json['description'] as String?,
+      imageUrl: json['image_url'] as String?,
+      videoUrl: json['video_url'] as String?,
+      countingType: json['counting_type'] as String?,
       createdAt:
-          json['created_at'] != null
-              ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
+          (json['created_at'] != null)
+              ? DateTime.tryParse(json['created_at'] as String) ??
+                  DateTime.now()
               : DateTime.now(),
       updatedAt:
-          json['updated_at'] != null
-              ? DateTime.tryParse(json['updated_at'])
+          (json['updated_at'] != null)
+              ? DateTime.tryParse(json['updated_at'] as String)
               : null,
     );
   }
 
-  // تبدیل از مدل به JSON
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'category': category,
       'target_muscle': targetMuscle,
       'name': name,
-      'created_by': createdBy, // تغییر از coach_username به created_by
+      'created_by': createdBy,
+      'creator_username': creatorUsername, // جدید
       'description': description,
       'image_url': imageUrl,
       'video_url': videoUrl,
@@ -87,13 +87,13 @@ class ExerciseModel {
     };
   }
 
-  // امکان تغییر مقادیر خاص در مدل بدون تغییر کل داده‌ها
   ExerciseModel copyWith({
     String? id,
     String? category,
     String? targetMuscle,
     String? name,
-    String? createdBy, // تغییر از coachUsername به createdBy
+    String? createdBy,
+    String? creatorUsername, // جدید
     String? description,
     String? imageUrl,
     String? videoUrl,
@@ -106,8 +106,8 @@ class ExerciseModel {
       category: category ?? this.category,
       targetMuscle: targetMuscle ?? this.targetMuscle,
       name: name ?? this.name,
-      createdBy:
-          createdBy ?? this.createdBy, // تغییر از coachUsername به createdBy
+      createdBy: createdBy ?? this.createdBy,
+      creatorUsername: creatorUsername ?? this.creatorUsername,
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       videoUrl: videoUrl ?? this.videoUrl,
@@ -117,9 +117,8 @@ class ExerciseModel {
     );
   }
 
-  // متد نمایش اطلاعات مدل در لاگ‌ها
   @override
   String toString() {
-    return 'ExerciseModel(id: $id, category: $category, targetMuscle: $targetMuscle, name: $name, createdBy: $createdBy, countingType: $countingType, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'ExerciseModel(id: $id, category: $category, targetMuscle: $targetMuscle, name: $name, createdBy: $createdBy, creatorUsername: $creatorUsername, countingType: $countingType, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
