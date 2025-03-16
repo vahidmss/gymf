@@ -1,129 +1,74 @@
-import 'package:gymf/data/models/workout_plan_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
+import 'package:gymf/data/models/workout_plan_model.dart';
 
 class WorkoutPlanService {
-  final SupabaseClient supabase = Supabase.instance.client;
-  final Uuid _uuid = const Uuid();
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  // ایجاد برنامه جدید
-  Future<void> createPlan(
-    WorkoutPlanModel plan,
-    String currentUserId, // شناسه کاربر فعلی (سازنده)
-    String? assignedUserId, // شناسه کاربر گیرنده (اختیاری)
-  ) async {
+  Future<List<WorkoutPlanModel>> getWorkoutPlans() async {
     try {
-      if (!_isValidUUID(currentUserId)) {
-        throw Exception('فرمت current_user_id نامعتبر است: $currentUserId');
-      }
-      if (assignedUserId != null && !_isValidUUID(assignedUserId)) {
-        throw Exception('فرمت assigned_user_id نامعتبر است: $assignedUserId');
-      }
-
-      final planData =
-          plan.toJson()
-            ..['created_by'] = currentUserId
-            ..['assigned_to'] = assignedUserId;
-
-      await supabase.from('workout_plans').insert(planData);
-    } catch (e) {
-      throw Exception('خطا در ایجاد برنامه: $e');
-    }
-  }
-
-  // دریافت تمام برنامه‌های یک کاربر
-  Future<List<WorkoutPlanModel>> getPlans(String userId) async {
-    try {
-      if (!_isValidUUID(userId)) {
-        throw Exception('فرمت user_id نامعتبر است: $userId');
-      }
-
-      final List response = await supabase
+      final response = await _supabase
           .from('workout_plans')
           .select()
-          .or('created_by.eq.$userId,assigned_to.eq.$userId')
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: false);
 
-      return response.map((e) => WorkoutPlanModel.fromJson(e)).toList();
+      final data = response as List<dynamic>;
+      return data.map((json) => WorkoutPlanModel.fromJson(json)).toList();
     } catch (e) {
-      throw Exception('خطا در دریافت برنامه‌ها: $e');
+      print('❌ خطا در گرفتن برنامه‌ها: $e');
+      throw Exception('خطا در گرفتن برنامه‌ها: $e');
     }
   }
 
-  // به‌روزرسانی برنامه
-  Future<void> updatePlan(
-    WorkoutPlanModel plan,
-    String currentUserId, // شناسه کاربر فعلی (برای تأیید دسترسی)
+  Future<List<WorkoutPlanModel>> getCoachPlans(String userId) async {
+    if (userId.isEmpty) {
+      print('⚠️ userId نامعتبر است');
+      return [];
+    }
+    try {
+      final response = await _supabase
+          .from('workout_plans')
+          .select()
+          .eq('created_by', userId)
+          .order('created_at', ascending: false);
+
+      final data = response as List<dynamic>;
+      return data.map((json) => WorkoutPlanModel.fromJson(json)).toList();
+    } catch (e) {
+      print('❌ خطا در گرفتن برنامه‌های مربی: $e');
+      throw Exception('خطا در گرفتن برنامه‌های مربی: $e');
+    }
+  }
+
+  Future<void> addWorkoutPlan(WorkoutPlanModel plan) async {
+    try {
+      await _supabase.from('workout_plans').insert(plan.toJson());
+      print('✅ برنامه ذخیره شد: ${plan.planName}');
+    } catch (e) {
+      print('❌ خطا در ذخیره برنامه: $e');
+      throw Exception('خطا در ذخیره برنامه: $e');
+    }
+  }
+
+  Future<void> updateWorkoutPlan(
+    String id,
+    Map<String, dynamic> updates,
   ) async {
     try {
-      if (!_isValidUUID(plan.id)) {
-        throw Exception('فرمت plan_id نامعتبر است: ${plan.id}');
-      }
-      if (!_isValidUUID(currentUserId)) {
-        throw Exception('فرمت current_user_id نامعتبر است: $currentUserId');
-      }
-
-      final planData =
-          plan.toJson()..['updated_at'] = DateTime.now().toIso8601String();
-
-      await supabase
-          .from('workout_plans')
-          .update(planData)
-          .eq('id', plan.id)
-          .eq(
-            'created_by',
-            currentUserId,
-          ); // فقط سازنده می‌تونه به‌روزرسانی کنه
+      await _supabase.from('workout_plans').update(updates).eq('id', id);
+      print('✅ برنامه آپدیت شد: $id');
     } catch (e) {
-      throw Exception('خطا در به‌روزرسانی برنامه: $e');
+      print('❌ خطا در آپدیت برنامه: $e');
+      throw Exception('خطا در آپدیت برنامه: $e');
     }
   }
 
-  // حذف برنامه
-  Future<void> deletePlan(String planId, String currentUserId) async {
+  Future<void> deleteWorkoutPlan(String id) async {
     try {
-      if (!_isValidUUID(planId)) {
-        throw Exception('فرمت plan_id نامعتبر است: $planId');
-      }
-      if (!_isValidUUID(currentUserId)) {
-        throw Exception('فرمت current_user_id نامعتبر است: $currentUserId');
-      }
-
-      await supabase
-          .from('workout_plans')
-          .delete()
-          .eq('id', planId)
-          .eq('created_by', currentUserId); // فقط سازنده می‌تونه حذف کنه
+      await _supabase.from('workout_plans').delete().eq('id', id);
+      print('✅ برنامه حذف شد: $id');
     } catch (e) {
+      print('❌ خطا در حذف برنامه: $e');
       throw Exception('خطا در حذف برنامه: $e');
     }
-  }
-
-  // دریافت جزئیات یک برنامه
-  Future<WorkoutPlanModel> getPlanDetails(String planId) async {
-    try {
-      if (!_isValidUUID(planId)) {
-        throw Exception('فرمت plan_id نامعتبر است: $planId');
-      }
-
-      final response =
-          await supabase
-              .from('workout_plans')
-              .select()
-              .eq('id', planId)
-              .single();
-
-      return WorkoutPlanModel.fromJson(response);
-    } catch (e) {
-      throw Exception('خطا در دریافت جزئیات برنامه: $e');
-    }
-  }
-
-  // تابع کمکی برای بررسی UUID معتبر
-  bool _isValidUUID(String? value) {
-    return value != null &&
-        RegExp(
-          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-        ).hasMatch(value);
   }
 }

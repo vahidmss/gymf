@@ -1,11 +1,13 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gymf/data/models/Comment.dart';
 import 'package:gymf/data/models/exercise_model.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart'; // برای فرمت تاریخ
 
 class ExerciseDetailScreen extends StatefulWidget {
   final ExerciseModel exercise;
@@ -17,100 +19,131 @@ class ExerciseDetailScreen extends StatefulWidget {
 }
 
 class _ExerciseDetailScreenState extends State<ExerciseDetailScreen> {
-  VideoPlayerController? _videoController;
-  bool _isLoadingVideo = true;
-  bool _isLoadingImage = true;
+  late VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
+  bool _isPlaying = false;
+  bool _isDarkTheme = true;
+  final TextEditingController _commentController = TextEditingController();
+  int _selectedRating = 0; // امتیاز انتخاب‌شده توسط کاربر
+  List<Comment> _comments = []; // لیست نظرات
+  bool _sortByNewest = true; // مرتب‌سازی بر اساس جدیدترین
 
   @override
   void initState() {
     super.initState();
     _initializeVideo();
-    _initializeImage();
-  }
-
-  void _initializeVideo() {
-    if (widget.exercise.videoUrl != null &&
-        widget.exercise.videoUrl!.isNotEmpty) {
-      final uri = Uri.tryParse(widget.exercise.videoUrl!);
-      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        _videoController = VideoPlayerController.network(
-            widget.exercise.videoUrl!,
-          )
-          ..initialize()
-              .then((_) {
-                if (mounted) {
-                  setState(() {
-                    _isLoadingVideo = false;
-                  });
-                }
-              })
-              .catchError((e) {
-                print('❌ خطا در مقداردهی ویدیوی شبکه‌ای: $e');
-                setState(() {
-                  _isLoadingVideo = false;
-                });
-              });
-      } else if (uri != null && uri.scheme == 'file') {
-        _videoController = VideoPlayerController.file(File(uri.path))
-          ..initialize()
-              .then((_) {
-                if (mounted) {
-                  setState(() {
-                    _isLoadingVideo = false;
-                  });
-                }
-              })
-              .catchError((e) {
-                print('❌ خطا در مقداردهی ویدیوی محلی: $e');
-                setState(() {
-                  _isLoadingVideo = false;
-                });
-              });
-      } else {
-        setState(() {
-          _isLoadingVideo = false;
-        });
-      }
-    } else {
-      setState(() {
-        _isLoadingVideo = false;
-      });
-    }
-  }
-
-  void _initializeImage() {
-    if (widget.exercise.imageUrl != null &&
-        widget.exercise.imageUrl!.isNotEmpty) {
-      Image.network(widget.exercise.imageUrl!).image
-          .resolve(const ImageConfiguration())
-          .addListener(
-            ImageStreamListener(
-              (info, synchronousCall) {
-                if (mounted) {
-                  setState(() {
-                    _isLoadingImage = false;
-                  });
-                }
-              },
-              onError: (exception, stackTrace) {
-                print('❌ خطا در بارگذاری تصویر: $exception');
-                setState(() {
-                  _isLoadingImage = false;
-                });
-              },
-            ),
-          );
-    } else {
-      setState(() {
-        _isLoadingImage = false;
-      });
-    }
+    // چند نظر نمونه برای تست
+    _comments = [
+      Comment(
+        userName: "علی",
+        text: "تمرین عالی بود، واقعاً حسابی عرق ریختم! 💪",
+        rating: 5,
+        timestamp: DateTime.now().subtract(const Duration(days: 2)),
+        likes: 10,
+      ),
+      Comment(
+        userName: "سارا",
+        text: "برای مبتدی‌ها یکم سخت بود، ولی خیلی خوب توضیح داده شده.",
+        rating: 4,
+        timestamp: DateTime.now().subtract(const Duration(days: 1)),
+        likes: 5,
+      ),
+    ];
   }
 
   @override
   void dispose() {
+    _videoController?.pause();
     _videoController?.dispose();
+    _commentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeVideo() async {
+    if (widget.exercise.videoUrl != null &&
+        widget.exercise.videoUrl!.isNotEmpty) {
+      try {
+        final fileInfo = await DefaultCacheManager().getFileFromCache(
+          widget.exercise.videoUrl!,
+        );
+        if (fileInfo != null && fileInfo.file.existsSync()) {
+          _videoController = VideoPlayerController.file(fileInfo.file);
+        } else {
+          final file = await DefaultCacheManager().getSingleFile(
+            widget.exercise.videoUrl!,
+          );
+          _videoController = VideoPlayerController.file(file);
+        }
+
+        await _videoController!.initialize();
+        if (mounted) {
+          setState(() {
+            _isVideoInitialized = true;
+          });
+          _videoController!.setLooping(true);
+        }
+      } catch (e) {
+        print('❌ خطا در مقداردهی ویدیوی تمرین: $e');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('خطا در پخش ویدیو: $e')));
+      }
+    } else {
+      _videoController = null;
+    }
+  }
+
+  void _toggleVideoPlayback() {
+    if (_isPlaying) {
+      _videoController?.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+    } else {
+      _videoController?.play();
+      setState(() {
+        _isPlaying = true;
+      });
+    }
+  }
+
+  void _addComment() {
+    if (_commentController.text.isEmpty || _selectedRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لطفاً نظر و امتیاز را وارد کنید!')),
+      );
+      return;
+    }
+
+    setState(() {
+      _comments.add(
+        Comment(
+          userName:
+              "کاربر فعلی", // بعداً می‌تونی با Supabase نام کاربر رو بگیری
+          text: _commentController.text,
+          rating: _selectedRating,
+          timestamp: DateTime.now(),
+        ),
+      );
+      _commentController.clear();
+      _selectedRating = 0;
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('نظر شما با موفقیت ثبت شد!')));
+  }
+
+  void _sortComments() {
+    setState(() {
+      if (_sortByNewest) {
+        _comments.sort(
+          (a, b) => b.timestamp.compareTo(a.timestamp),
+        ); // جدیدترین
+      } else {
+        _comments.sort((a, b) => b.likes.compareTo(a.likes)); // محبوب‌ترین
+      }
+    });
   }
 
   @override
@@ -118,11 +151,18 @@ class _ExerciseDetailScreenState extends State<ExerciseDetailScreen> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Colors.black,
-            Colors.blueGrey.shade900,
-            Colors.yellow.shade800,
-          ],
+          colors:
+              _isDarkTheme
+                  ? [
+                    Colors.black,
+                    Colors.blueGrey.shade900,
+                    Colors.yellow.shade800.withOpacity(0.3),
+                  ]
+                  : [
+                    Colors.white,
+                    Colors.blueGrey.shade100,
+                    Colors.yellow.shade200,
+                  ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           stops: const [0.0, 0.5, 1.0],
@@ -135,14 +175,13 @@ class _ExerciseDetailScreenState extends State<ExerciseDetailScreen> {
             widget.exercise.name,
             style: GoogleFonts.vazirmatn(
               textStyle: TextStyle(
-                color: Colors.yellow,
+                color: _isDarkTheme ? Colors.yellow : Colors.black87,
                 fontWeight: FontWeight.bold,
                 fontSize: 24,
                 shadows: [
-                  Shadow(color: Colors.black54, blurRadius: 5),
                   Shadow(
-                    color: _getCategoryColor(widget.exercise.category),
-                    blurRadius: 10,
+                    color: _isDarkTheme ? Colors.black54 : Colors.grey.shade300,
+                    blurRadius: 5,
                   ),
                 ],
               ),
@@ -152,309 +191,521 @@ class _ExerciseDetailScreenState extends State<ExerciseDetailScreen> {
           elevation: 0,
           actions: [
             IconButton(
-              icon: const Icon(Icons.share, color: Colors.yellow),
+              icon:
+                  Icon(
+                    _isDarkTheme ? Icons.light_mode : Icons.dark_mode,
+                  ).animate().rotate(),
+              color: _isDarkTheme ? Colors.yellow : Colors.black87,
               onPressed: () {
-                Share.share(
-                  'این تمرین رو توی مدرسه بدنسازی ببین: ${widget.exercise.name}\nدسته‌بندی: ${widget.exercise.category}',
-                  subject: 'تمرین بدنسازی: ${widget.exercise.name}',
-                );
+                setState(() {
+                  _isDarkTheme = !_isDarkTheme;
+                });
               },
-              tooltip: 'اشتراک‌گذاری',
+              tooltip: 'تغییر تم',
             ),
           ],
         ),
-        body:
-            _isLoadingVideo || _isLoadingImage
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: AnimateList(
-                      interval: 100.ms,
-                      effects: [
-                        FadeEffect(duration: 600.ms),
-                        SlideEffect(
-                          begin: const Offset(0, 0.3),
-                          end: Offset.zero,
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // هدر با ویدیو یا تصویر
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    height: 250,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(30),
+                        bottomRight: Radius.circular(30),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              _isDarkTheme
+                                  ? Colors.black54
+                                  : Colors.grey.shade300,
+                          blurRadius: 10,
+                          spreadRadius: 2,
                         ),
                       ],
-                      children: [
-                        // تصویر
-                        if (widget.exercise.imageUrl != null &&
-                            widget.exercise.imageUrl!.isNotEmpty)
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (context) => Scaffold(
-                                        backgroundColor: Colors.black,
-                                        body: PhotoView(
-                                          imageProvider: NetworkImage(
-                                            widget.exercise.imageUrl!,
-                                          ),
-                                          backgroundDecoration:
-                                              const BoxDecoration(
-                                                color: Colors.black,
-                                              ),
-                                          minScale:
-                                              PhotoViewComputedScale.contained,
-                                          maxScale:
-                                              PhotoViewComputedScale.covered *
-                                              2,
-                                        ),
-                                      ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 20),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: Colors.yellow.withOpacity(0.3),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black26.withOpacity(0.2),
-                                    blurRadius: 10,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(15),
-                                child: Image.network(
-                                  widget.exercise.imageUrl!,
-                                  width: double.infinity,
-                                  height: 200,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      height: 200,
-                                      color: Colors.blueGrey.shade800,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(30),
+                        bottomRight: Radius.circular(30),
+                      ),
+                      child:
+                          widget.exercise.videoUrl != null &&
+                                  widget.exercise.videoUrl!.isNotEmpty &&
+                                  _isVideoInitialized &&
+                                  _videoController != null
+                              ? VideoPlayer(_videoController!)
+                              : CachedNetworkImage(
+                                imageUrl: widget.exercise.imageUrl ?? '',
+                                fit: BoxFit.cover,
+                                placeholder:
+                                    (context, url) => Container(
+                                      color:
+                                          _isDarkTheme
+                                              ? Colors.blueGrey.shade800
+                                              : Colors.grey.shade200,
                                       child: const Center(
-                                        child: Text(
-                                          'خطا در بارگذاری تصویر',
-                                          style: TextStyle(color: Colors.red),
-                                        ),
+                                        child: CircularProgressIndicator(),
                                       ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        // ویدیو
-                        if (widget.exercise.videoUrl != null &&
-                            widget.exercise.videoUrl!.isNotEmpty)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 20),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(15),
-                              border: Border.all(
-                                color: Colors.yellow.withOpacity(0.3),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black26.withOpacity(0.2),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(15),
-                              child:
-                                  _videoController != null &&
-                                          _videoController!.value.isInitialized
-                                      ? Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          AspectRatio(
-                                            aspectRatio:
-                                                _videoController!
-                                                    .value
-                                                    .aspectRatio,
-                                            child: VideoPlayer(
-                                              _videoController!,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: Icon(
-                                              _videoController!.value.isPlaying
-                                                  ? Icons.pause
-                                                  : Icons.play_circle_fill,
-                                              size: 50,
-                                              color: Colors.yellow,
-                                            ),
-                                            onPressed: () {
-                                              if (_videoController!
-                                                  .value
-                                                  .isPlaying) {
-                                                _videoController!.pause();
-                                              } else {
-                                                _videoController!.play();
-                                              }
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ],
-                                      )
-                                      : Container(
-                                        height: 200,
-                                        color: Colors.blueGrey.shade800,
-                                        child: const Center(
-                                          child: Text(
-                                            'خطا در بارگذاری ویدیو',
-                                            style: TextStyle(color: Colors.red),
-                                          ),
-                                        ),
+                                    ),
+                                errorWidget:
+                                    (context, url, error) => Container(
+                                      color:
+                                          _isDarkTheme
+                                              ? Colors.blueGrey.shade800
+                                              : Colors.grey.shade200,
+                                      child: const Icon(
+                                        Icons.fitness_center,
+                                        color: Colors.white,
+                                        size: 50,
                                       ),
-                            ),
-                          ),
-
-                        // اطلاعات تمرین
-                        _buildInfoCard('نام تمرین', widget.exercise.name),
-                        _buildInfoCard('دسته‌بندی', widget.exercise.category),
-                        if (widget.exercise.targetMuscle != null)
-                          _buildInfoCard(
-                            'عضله هدف',
-                            widget.exercise.targetMuscle!,
-                          ),
-                        _buildInfoCard(
-                          'نوع شمارش',
-                          widget.exercise.countingType ?? 'نامشخص',
+                                    ),
+                              ),
+                    ),
+                  ),
+                  if (widget.exercise.videoUrl != null &&
+                      widget.exercise.videoUrl!.isNotEmpty)
+                    IconButton(
+                      icon: Icon(
+                        _isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_filled,
+                        color: Colors.yellow.withOpacity(0.9),
+                        size: 60,
+                      ),
+                      onPressed:
+                          _isVideoInitialized ? _toggleVideoPlayback : null,
+                    ),
+                ],
+              ).animate().fadeIn(duration: 500.ms),
+              const SizedBox(height: 20),
+              // جزئیات تمرین
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'دسته‌بندی: ${widget.exercise.category}',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (widget.exercise.targetMuscle != null)
+                      Text(
+                        'عضله هدف: ${widget.exercise.targetMuscle}',
+                        style: GoogleFonts.vazirmatn(
+                          color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                          fontSize: 16,
                         ),
-                        if (widget.exercise.description != null &&
-                            widget.exercise.description!.isNotEmpty)
-                          _buildInfoCard(
-                            'توضیحات',
-                            widget.exercise.description!,
+                      ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'توضیحات:',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.yellow : Colors.black87,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      widget.exercise.description ?? 'توضیحاتی در دسترس نیست.',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'ایجادشده توسط: ${widget.exercise.creatorUsername ?? 'ناشناس'}',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white54 : Colors.black45,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ).animate().slideY(begin: 0.5, duration: 500.ms),
+              ),
+              const SizedBox(height: 20),
+              // دکمه‌های تعاملی
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildActionButton(
+                      icon: Icons.add_circle_outline,
+                      label: 'اضافه به برنامه',
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('تمرین به برنامه اضافه شد!'),
                           ),
-                        _buildInfoCard(
-                          'ایجادشده توسط',
-                          widget.exercise.creatorUsername ?? 'ناشناس',
-                        ),
-                        _buildInfoCard(
-                          'تاریخ ایجاد',
-                          widget.exercise.createdAt.toIso8601String().split(
-                            'T',
-                          )[0],
-                        ),
-                        if (widget.exercise.updatedAt != null)
-                          _buildInfoCard(
-                            'آخرین ویرایش',
-                            widget.exercise.updatedAt!.toIso8601String().split(
-                              'T',
-                            )[0],
+                        );
+                      },
+                    ),
+                    _buildActionButton(
+                      icon: Icons.share,
+                      label: 'اشتراک‌گذاری',
+                      onTap: () {
+                        Share.share(
+                          'تمرین ${widget.exercise.name} رو توی اپ مدرسه بدنسازی ببین! 💪',
+                        );
+                      },
+                    ),
+                    _buildActionButton(
+                      icon: Icons.support_agent,
+                      label: 'مخاطب مربی',
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('به زودی اضافه می‌شود!'),
                           ),
-                        const SizedBox(height: 20),
-                        // دکمه تمرین‌های مشابه
-                        Center(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('به زودی اضافه می‌شه!'),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _getCategoryColor(
-                                widget.exercise.category,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 10,
-                              ),
-                            ),
-                            child: Text(
-                              'تمرین‌های مشابه',
-                              style: GoogleFonts.vazirmatn(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        );
+                      },
+                    ),
+                  ],
+                ).animate().scale(duration: 500.ms),
+              ),
+              const SizedBox(height: 20),
+              // بخش نظرات
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'نظرات کاربران (${_comments.length})',
+                          style: GoogleFonts.vazirmatn(
+                            color:
+                                _isDarkTheme ? Colors.yellow : Colors.black87,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _sortByNewest = !_sortByNewest;
+                              _sortComments();
+                            });
+                          },
+                          child: Text(
+                            _sortByNewest ? 'محبوب‌ترین' : 'جدیدترین',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                              fontSize: 14,
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                    const SizedBox(height: 10),
+                    // باکس ثبت نظر
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color:
+                            _isDarkTheme
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.white.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color:
+                              _isDarkTheme
+                                  ? Colors.yellow.withOpacity(0.3)
+                                  : Colors.black12,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                _isDarkTheme
+                                    ? Colors.black26
+                                    : Colors.grey.shade200,
+                            blurRadius: 5,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _commentController,
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme ? Colors.white : Colors.black87,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'نظر خود را بنویسید...',
+                              hintStyle: GoogleFonts.vazirmatn(
+                                color:
+                                    _isDarkTheme
+                                        ? Colors.white70
+                                        : Colors.black54,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor:
+                                  _isDarkTheme
+                                      ? Colors.white.withOpacity(0.05)
+                                      : Colors.grey.shade100,
+                            ),
+                            maxLines: 3,
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: List.generate(5, (index) {
+                                  return IconButton(
+                                    icon: Icon(
+                                      index < _selectedRating
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      color: Colors.yellow,
+                                      size: 24,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedRating = index + 1;
+                                      });
+                                    },
+                                  );
+                                }),
+                              ),
+                              ElevatedButton(
+                                onPressed: _addComment,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.yellow.shade700,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: Text(
+                                  'ارسال',
+                                  style: GoogleFonts.vazirmatn(
+                                    color: Colors.black87,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ).animate().scale(),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    // لیست نظرات
+                    _comments.isEmpty
+                        ? Center(
+                          child: Text(
+                            'هنوز نظری ثبت نشده است.',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                              fontSize: 16,
+                            ),
+                          ),
+                        )
+                        : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _comments.length,
+                          itemBuilder: (context, index) {
+                            final comment = _comments[index];
+                            return _buildCommentCard(comment, index);
+                          },
+                        ),
+                  ],
+                ).animate().fadeIn(duration: 500.ms),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildInfoCard(String title, String value) {
+  Widget _buildCommentCard(Comment comment, int index) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.yellow.withOpacity(0.3)),
+        color: _isDarkTheme ? Colors.white.withOpacity(0.05) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _isDarkTheme ? Colors.yellow.withOpacity(0.2) : Colors.black12,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26.withOpacity(0.2),
-            blurRadius: 10,
+            color: _isDarkTheme ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 5,
             spreadRadius: 1,
           ),
         ],
-        gradient: LinearGradient(
-          colors: [
-            _getCategoryColor(widget.exercise.category).withOpacity(0.2),
-            Colors.black.withOpacity(0.5),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.vazirmatn(
-              color: Colors.yellow,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(color: Colors.black54, blurRadius: 5),
-                Shadow(
-                  color: _getCategoryColor(widget.exercise.category),
-                  blurRadius: 10,
+          CircleAvatar(
+            radius: 20,
+            backgroundColor:
+                _isDarkTheme ? Colors.blueGrey.shade800 : Colors.grey.shade200,
+            child: Text(
+              comment.userName[0],
+              style: GoogleFonts.vazirmatn(
+                color: _isDarkTheme ? Colors.white : Colors.black87,
+                fontSize: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      comment.userName,
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Row(
+                      children: List.generate(5, (i) {
+                        return Icon(
+                          i < comment.rating ? Icons.star : Icons.star_border,
+                          color: Colors.yellow,
+                          size: 16,
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  comment.text,
+                  style: GoogleFonts.vazirmatn(
+                    color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      DateFormat(
+                        'yyyy-MM-dd – HH:mm',
+                      ).format(comment.timestamp),
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white54 : Colors.black45,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.favorite,
+                            color: comment.likes > 0 ? Colors.red : Colors.grey,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              comment.likes++;
+                            });
+                          },
+                        ),
+                        Text(
+                          '${comment.likes}',
+                          style: GoogleFonts.vazirmatn(
+                            color:
+                                _isDarkTheme ? Colors.white70 : Colors.black54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            style: GoogleFonts.vazirmatn(color: Colors.white, fontSize: 14),
-          ),
         ],
       ),
-    );
+    ).animate().fadeIn(duration: 300.ms).slideX(begin: 0.5);
   }
 
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'قدرتی':
-        return Colors.redAccent;
-      case 'هوازی':
-        return Colors.greenAccent;
-      case 'تعادلی':
-        return Colors.blueAccent;
-      default:
-        return Colors.yellow;
-    }
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        decoration: BoxDecoration(
+          color: _isDarkTheme ? Colors.white.withOpacity(0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color:
+                _isDarkTheme ? Colors.yellow.withOpacity(0.3) : Colors.black12,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _isDarkTheme ? Colors.black26 : Colors.grey.shade200,
+              blurRadius: 5,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: _isDarkTheme ? Colors.yellow : Colors.black87,
+              size: 20,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.vazirmatn(
+                color: _isDarkTheme ? Colors.white70 : Colors.black87,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

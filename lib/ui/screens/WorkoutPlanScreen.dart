@@ -1,544 +1,1117 @@
 import 'package:flutter/material.dart';
-import 'package:gymf/core/services/WorkoutPlanService.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:gymf/data/models/exercise_model.dart';
 import 'package:gymf/data/models/workout_plan_model.dart';
 import 'package:gymf/providers/auth_provider.dart';
-import 'package:uuid/uuid.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:gymf/providers/exercise_provider.dart';
+import 'package:animate_do/animate_do.dart';
 
 class WorkoutPlanScreen extends StatefulWidget {
   const WorkoutPlanScreen({super.key});
 
   @override
-  _WorkoutPlanScreenState createState() => _WorkoutPlanScreenState();
+  State<WorkoutPlanScreen> createState() => _WorkoutPlanScreenState();
 }
 
 class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
-  final _formKey = GlobalKey<FormState>();
   final TextEditingController _planNameController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-  final WorkoutPlanService _workoutPlanService = WorkoutPlanService();
-  final Uuid _uuid = const Uuid();
-
-  List<WorkoutDay> _days = [
-    WorkoutDay(dayName: 'روز 1', exercises: []),
-  ]; // لیست اولیه روزها
-  String? _selectedAssignedToUsername; // یوزرنیم گیرنده (اختیاری)
-  String? _currentUserId; // شناسه کاربر فعلی
-  String? _currentUsername; // یوزرنیم کاربر فعلی
-  String? _currentRole; // نقش کاربر (coach یا athlete)
+  List<WorkoutDay> _days = [];
+  bool _isDarkTheme = true;
+  WorkoutPlanModel? _selectedPlan;
+  double? _weight;
 
   @override
   void initState() {
     super.initState();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    _currentUserId = authProvider.userId;
-    _currentUsername = authProvider.currentUser?.username;
-    _currentRole = authProvider.currentUser?.role;
-  }
-
-  void _addDay() {
-    setState(() {
-      _days.add(WorkoutDay(dayName: 'روز ${_days.length + 1}', exercises: []));
-    });
-  }
-
-  void _removeDay(int index) {
-    if (_days.length > 1) {
-      setState(() {
-        _days.removeAt(index);
-      });
-    }
-  }
-
-  void _addExercise(int dayIndex) {
-    setState(() {
-      _days[dayIndex].exercises.add(
-        WorkoutExercise(
-          exerciseId: _uuid.v4(),
-          name: 'تمرین جدید',
-          sets: 3, // پیش‌فرض 3 ست
-          countingType: 'وزن (kg)', // پیش‌فرض وزن
-          supersetGroupId: null, // پیش‌فرض بدون سوپرست
-        ),
-      );
-    });
-  }
-
-  void _removeExercise(int dayIndex, int exerciseIndex) {
-    setState(() {
-      _days[dayIndex].exercises.removeAt(exerciseIndex);
-    });
-  }
-
-  void _updateExerciseSuperset(
-    int dayIndex,
-    int exerciseIndex,
-    String? supersetGroupId,
-  ) {
-    setState(() {
-      _days[dayIndex].exercises[exerciseIndex] = _days[dayIndex]
-          .exercises[exerciseIndex]
-          .copyWith(supersetGroupId: supersetGroupId);
-    });
-  }
-
-  Future<void> _savePlan() async {
-    if (!_formKey.currentState!.validate()) return;
-
+    final exerciseProvider = Provider.of<ExerciseProvider>(
+      context,
+      listen: false,
+    );
     final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
       context,
       listen: false,
     );
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    try {
-      await workoutPlanProvider.createPlan(
-        userId: _currentUserId ?? '',
-        planName: _planNameController.text,
-        days: _days,
-        assignedToUsername: _selectedAssignedToUsername,
-        username: _currentUsername ?? '',
-        role: _currentRole ?? 'athlete',
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('برنامه با موفقیت ایجاد شد!')),
-      );
-      _planNameController.clear();
-      _notesController.clear();
-      setState(() {
-        _days = [WorkoutDay(dayName: 'روز 1', exercises: [])];
-        _selectedAssignedToUsername = null;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خطا در ایجاد برنامه: $e')));
-    }
+    await exerciseProvider.fetchAllExercises();
+    await workoutPlanProvider.fetchCoachPlans(authProvider.userId ?? '');
+    setState(() {
+      _days = [WorkoutDay(dayName: 'روز ۱', exercises: [])];
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'ایجاد برنامه تمرینی',
-          style: TextStyle(color: Colors.yellow, fontSize: 20),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      backgroundColor: Colors.black,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: _planNameController,
-                  decoration: InputDecoration(
-                    labelText: 'نام برنامه',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[900],
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'نام برنامه الزامی است';
-                    }
-                    return null;
-                  },
+  void _addDay() {
+    setState(() {
+      final newDayNumber = _days.length + 1;
+      _days.add(WorkoutDay(dayName: 'روز $newDayNumber', exercises: []));
+    });
+  }
+
+  void _removeDay(int index) {
+    setState(() {
+      _days.removeAt(index);
+      for (int i = 0; i < _days.length; i++) {
+        _days[i] = WorkoutDay(
+          dayName: 'روز ${i + 1}',
+          exercises: _days[i].exercises,
+        );
+      }
+    });
+  }
+
+  void _addExercise(int dayIndex) {
+    final exerciseProvider = Provider.of<ExerciseProvider>(
+      context,
+      listen: false,
+    );
+    showDialog(
+      context: context,
+      builder: (context) {
+        final TextEditingController _exerciseNameController =
+            TextEditingController();
+        int _sets = 3;
+        int? _reps = 10;
+        int? _duration;
+        double? _weight;
+        String _countingType = 'وزن (kg)';
+        String? _notes;
+        ExerciseModel? _selectedExercise;
+        List<WorkoutExercise> _tempExercises = List.from(
+          _days[dayIndex].exercises,
+        );
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor:
+                  _isDarkTheme
+                      ? Colors.blueGrey.shade900.withOpacity(0.9)
+                      : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: Text(
+                'اضافه کردن تمرین',
+                style: GoogleFonts.vazirmatn(
+                  color: _isDarkTheme ? Colors.yellow : Colors.black87,
                 ),
-                const SizedBox(height: 16),
-                if (_currentRole == 'coach') // فقط برای مربی‌ها
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
-                      labelText: 'یوزرنیم ورزشکار (اختیاری)',
-                      labelStyle: const TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(color: Colors.amber),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[900],
-                    ),
-                    value: _selectedAssignedToUsername,
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text(
-                          'هیچ‌کدام',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                      // اینجا باید لیستی از یوزرنیم‌های ورزشکارها بگیری (مثلاً از AuthProvider)
-                      // برای سادگی، فعلاً خالی نگه می‌دارم
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedAssignedToUsername = value;
-                      });
-                    },
-                    dropdownColor: Colors.grey[900],
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _notesController,
-                  decoration: InputDecoration(
-                    labelText: 'یادداشت‌ها (اختیاری)',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[900],
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                ..._days.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final day = entry.value;
-                  return _buildDaySection(index, day);
-                }),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    ElevatedButton(
-                      onPressed: _addDay,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 20,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Autocomplete<ExerciseModel>(
+                            optionsBuilder: (
+                              TextEditingValue textEditingValue,
+                            ) {
+                              if (textEditingValue.text.length < 3) {
+                                return const Iterable<ExerciseModel>.empty();
+                              }
+                              return exerciseProvider.exercises.where((
+                                exercise,
+                              ) {
+                                return exercise.name.toLowerCase().contains(
+                                  textEditingValue.text.toLowerCase(),
+                                );
+                              });
+                            },
+                            displayStringForOption:
+                                (ExerciseModel option) => option.name,
+                            onSelected: (ExerciseModel selection) {
+                              setState(() {
+                                _selectedExercise = selection;
+                                _exerciseNameController.text = selection.name;
+                                _countingType =
+                                    selection.countingType ?? 'وزن (kg)';
+                                if (![
+                                  'وزن (kg)',
+                                  'تایم',
+                                  'تعداد',
+                                ].contains(_countingType)) {
+                                  _countingType = 'وزن (kg)';
+                                }
+                              });
+                            },
+                            fieldViewBuilder: (
+                              context,
+                              controller,
+                              focusNode,
+                              onFieldSubmitted,
+                            ) {
+                              _exerciseNameController.addListener(() {
+                                if (_exerciseNameController.text.length >= 3) {
+                                  setState(() {});
+                                }
+                              });
+                              return TextField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                decoration: InputDecoration(
+                                  labelText: 'نام تمرین',
+                                  labelStyle: GoogleFonts.vazirmatn(
+                                    color:
+                                        _isDarkTheme
+                                            ? Colors.white70
+                                            : Colors.black54,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  filled: true,
+                                  fillColor:
+                                      _isDarkTheme
+                                          ? Colors.white.withOpacity(0.1)
+                                          : Colors.grey.shade100,
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                        const SizedBox(width: 10),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_circle,
+                            color: Colors.yellow,
+                          ),
+                          onPressed: () {
+                            Navigator.pushNamed(
+                              context,
+                              '/submit-exercise',
+                            ).then((newExercise) {
+                              if (newExercise != null &&
+                                  newExercise is ExerciseModel) {
+                                setState(() {
+                                  exerciseProvider.exercises.add(newExercise);
+                                  _selectedExercise = newExercise;
+                                  _exerciseNameController.text =
+                                      newExercise.name;
+                                  _countingType =
+                                      newExercise.countingType ?? 'وزن (kg)';
+                                  if (![
+                                    'وزن (kg)',
+                                    'تایم',
+                                    'تعداد',
+                                  ].contains(_countingType)) {
+                                    _countingType = 'وزن (kg)';
+                                  }
+                                });
+                              }
+                            });
+                          },
+                          tooltip: 'اضافه کردن تمرین جدید',
                         ),
-                      ),
-                      child: const Text(
-                        'اضافه کردن روز',
-                        style: TextStyle(color: Colors.black, fontSize: 16),
-                      ),
+                      ],
                     ),
-                    ElevatedButton(
-                      onPressed: _savePlan,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 20,
+                    const SizedBox(height: 10),
+                    if (_exerciseNameController.text.isNotEmpty &&
+                        _selectedExercise == null &&
+                        !exerciseProvider.exercises.any(
+                          (exercise) =>
+                              exercise.name.toLowerCase() ==
+                              _exerciseNameController.text.toLowerCase(),
+                        ))
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushNamed(
+                            context,
+                            '/submit-exercise',
+                          ).then((newExercise) {
+                            if (newExercise != null &&
+                                newExercise is ExerciseModel) {
+                              setState(() {
+                                exerciseProvider.exercises.add(newExercise);
+                                _selectedExercise = newExercise;
+                                _exerciseNameController.text = newExercise.name;
+                                _countingType =
+                                    newExercise.countingType ?? 'وزن (kg)';
+                                if (![
+                                  'وزن (kg)',
+                                  'تایم',
+                                  'تعداد',
+                                ].contains(_countingType)) {
+                                  _countingType = 'وزن (kg)';
+                                }
+                              });
+                            }
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                        child: Text(
+                          'تمرین پیدا نشد، ثبت کنید',
+                          style: GoogleFonts.vazirmatn(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                      child: const Text(
-                        'ذخیره برنامه',
-                        style: TextStyle(color: Colors.black, fontSize: 16),
+                    // پیش‌نمایش اطلاعات تمرین
+                    if (_selectedExercise != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color:
+                              _isDarkTheme
+                                  ? Colors.white.withOpacity(0.05)
+                                  : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color:
+                                _isDarkTheme
+                                    ? Colors.yellow.withOpacity(0.2)
+                                    : Colors.black12,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'پیش‌نمایش تمرین:',
+                              style: GoogleFonts.vazirmatn(
+                                color:
+                                    _isDarkTheme
+                                        ? Colors.yellow
+                                        : Colors.black87,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              'دسته‌بندی: ${_selectedExercise!.category}',
+                              style: GoogleFonts.vazirmatn(
+                                color:
+                                    _isDarkTheme
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if (_selectedExercise!.targetMuscle != null)
+                              Text(
+                                'عضله هدف: ${_selectedExercise!.targetMuscle}',
+                                style: GoogleFonts.vazirmatn(
+                                  color:
+                                      _isDarkTheme
+                                          ? Colors.white70
+                                          : Colors.black54,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            Text(
+                              'نوع شمارش: ${_selectedExercise!.countingType ?? 'نامشخص'}',
+                              style: GoogleFonts.vazirmatn(
+                                color:
+                                    _isDarkTheme
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'تعداد ست‌ها:',
+                          style: GoogleFonts.vazirmatn(
+                            color:
+                                _isDarkTheme ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove),
+                              onPressed:
+                                  _sets > 1
+                                      ? () {
+                                        setState(() {
+                                          _sets--;
+                                        });
+                                      }
+                                      : null,
+                            ),
+                            Text(
+                              '$_sets',
+                              style: GoogleFonts.vazirmatn(
+                                color:
+                                    _isDarkTheme
+                                        ? Colors.white
+                                        : Colors.black87,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () {
+                                setState(() {
+                                  _sets++;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'شمارش بر اساس:',
+                          style: GoogleFonts.vazirmatn(
+                            color:
+                                _isDarkTheme ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                        DropdownButton<String>(
+                          value: _countingType,
+                          items:
+                              ['وزن (kg)', 'تایم', 'تعداد'].map((type) {
+                                return DropdownMenuItem(
+                                  value: type,
+                                  child: Text(type),
+                                );
+                              }).toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _countingType = value;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_countingType == 'تعداد')
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'تعداد تکرارها:',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed:
+                                    _reps != null && _reps! > 1
+                                        ? () {
+                                          setState(() {
+                                            _reps = _reps! - 1;
+                                          });
+                                        }
+                                        : null,
+                              ),
+                              Text(
+                                '${_reps ?? 0}',
+                                style: GoogleFonts.vazirmatn(
+                                  color:
+                                      _isDarkTheme
+                                          ? Colors.white
+                                          : Colors.black87,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () {
+                                  setState(() {
+                                    _reps = (_reps ?? 0) + 1;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    if (_countingType == 'تایم')
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'مدت زمان (ثانیه):',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed:
+                                    _duration != null && _duration! > 0
+                                        ? () {
+                                          setState(() {
+                                            _duration = _duration! - 1;
+                                          });
+                                        }
+                                        : null,
+                              ),
+                              Text(
+                                '${_duration ?? 0}',
+                                style: GoogleFonts.vazirmatn(
+                                  color:
+                                      _isDarkTheme
+                                          ? Colors.white
+                                          : Colors.black87,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () {
+                                  setState(() {
+                                    _duration = (_duration ?? 0) + 1;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    if (_countingType == 'وزن (kg)')
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'وزن (کیلوگرم):',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed:
+                                    _weight != null && _weight! > 0
+                                        ? () {
+                                          setState(() {
+                                            _weight = _weight! - 1;
+                                          });
+                                        }
+                                        : null,
+                              ),
+                              Text(
+                                '${_weight ?? 0}',
+                                style: GoogleFonts.vazirmatn(
+                                  color:
+                                      _isDarkTheme
+                                          ? Colors.white
+                                          : Colors.black87,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () {
+                                  setState(() {
+                                    _weight = (_weight ?? 0) + 1;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      onChanged: (value) => _notes = value,
+                      decoration: InputDecoration(
+                        labelText: 'یادداشت (اختیاری)',
+                        labelStyle: GoogleFonts.vazirmatn(
+                          color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor:
+                            _isDarkTheme
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.grey.shade100,
+                      ),
+                      maxLines: 2,
                     ),
                   ],
                 ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'لغو',
+                    style: GoogleFonts.vazirmatn(
+                      color: _isDarkTheme ? Colors.white : Colors.black54,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (_exerciseNameController.text.isEmpty ||
+                        _selectedExercise == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('لطفاً یک تمرین معتبر انتخاب کنید!'),
+                        ),
+                      );
+                      return;
+                    }
+                    final exercise = WorkoutExercise(
+                      exerciseId: _selectedExercise!.id,
+                      name: _selectedExercise!.name,
+                      category:
+                          _selectedExercise!
+                              .category, // مستقیم از ExerciseModel
+                      sets: _sets,
+                      reps: _countingType == 'تعداد' ? _reps : null,
+                      duration: _countingType == 'تایم' ? _duration : null,
+                      weight: _countingType == 'وزن (kg)' ? _weight : null,
+                      countingType: _countingType,
+                      notes: _notes,
+                    );
+                    _tempExercises.add(exercise);
+
+                    this.setState(() {
+                      _days[dayIndex] = WorkoutDay(
+                        dayName: _days[dayIndex].dayName,
+                        exercises: _tempExercises,
+                      );
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text(
+                    'اضافه',
+                    style: GoogleFonts.vazirmatn(
+                      color: _isDarkTheme ? Colors.yellow : Colors.black87,
+                    ),
+                  ),
+                ),
               ],
-            ),
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildDaySection(int dayIndex, WorkoutDay day) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      color: Colors.grey[900],
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  day.dayName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _removeDay(dayIndex),
-                ),
-              ],
-            ),
-            ...day.exercises.asMap().entries.map((entry) {
-              final exerciseIndex = entry.key;
-              final exercise = entry.value;
-              return _buildExerciseSection(dayIndex, exerciseIndex, exercise);
-            }),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () => _addExercise(dayIndex),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'اضافه کردن تمرین',
-                style: TextStyle(color: Colors.white, fontSize: 14),
-              ),
-            ).animate().scale(duration: 200.ms),
-          ],
+  Widget _buildExerciseCard(
+    WorkoutExercise exercise,
+    int index,
+    WorkoutDay day,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color:
+            _isDarkTheme ? Colors.white.withOpacity(0.05) : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _isDarkTheme ? Colors.yellow.withOpacity(0.2) : Colors.black12,
         ),
       ),
-    ).animate().fade(duration: 300.ms).slideX(begin: 0.2, end: 0);
-  }
-
-  Widget _buildExerciseSection(
-    int dayIndex,
-    int exerciseIndex,
-    WorkoutExercise exercise,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextFormField(
-                  initialValue: exercise.name,
-                  decoration: InputDecoration(
-                    labelText: 'نام تمرین',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[800],
+                Text(
+                  exercise.name,
+                  style: GoogleFonts.vazirmatn(
+                    color: _isDarkTheme ? Colors.white : Colors.black87,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
                   ),
-                  style: const TextStyle(color: Colors.white),
-                  onChanged: (value) {
-                    setState(() {
-                      _days[dayIndex].exercises[exerciseIndex] = exercise
-                          .copyWith(name: value);
-                    });
-                  },
                 ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  decoration: InputDecoration(
-                    labelText: 'نوع شمارش',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[800],
+                const SizedBox(height: 5),
+                Text(
+                  'دسته: ${exercise.category} | ست‌ها: ${exercise.sets}',
+                  style: GoogleFonts.vazirmatn(
+                    color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                    fontSize: 12,
                   ),
-                  value: exercise.countingType,
-                  items:
-                      ['وزن (kg)', 'تعداد', 'تایم'].map((type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(
-                            type,
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        );
-                      }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _days[dayIndex].exercises[exerciseIndex] = exercise
-                          .copyWith(countingType: value);
-                    });
-                  },
-                  dropdownColor: Colors.grey[900],
-                  style: const TextStyle(color: Colors.white),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: exercise.sets.toString(),
-                        decoration: InputDecoration(
-                          labelText: 'تعداد ست‌ها',
-                          labelStyle: const TextStyle(color: Colors.white),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Colors.amber),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[800],
-                        ),
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) {
-                          setState(() {
-                            _days[dayIndex].exercises[exerciseIndex] = exercise
-                                .copyWith(
-                                  sets: int.tryParse(value) ?? exercise.sets,
-                                );
-                          });
-                        },
-                      ),
+                if (exercise.reps != null)
+                  Text(
+                    'تکرارها: ${exercise.reps}',
+                    style: GoogleFonts.vazirmatn(
+                      color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                      fontSize: 12,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: exercise.reps?.toString() ?? '',
-                        decoration: InputDecoration(
-                          labelText: 'تکرارها (اختیاری)',
-                          labelStyle: const TextStyle(color: Colors.white),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Colors.amber),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[800],
-                        ),
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) {
-                          setState(() {
-                            _days[dayIndex]
-                                .exercises[exerciseIndex] = exercise.copyWith(
-                              reps: value.isEmpty ? null : int.tryParse(value),
-                            );
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: exercise.duration?.toString() ?? '',
-                        decoration: InputDecoration(
-                          labelText: 'مدت زمان (ثانیه، اختیاری)',
-                          labelStyle: const TextStyle(color: Colors.white),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Colors.amber),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[800],
-                        ),
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) {
-                          setState(() {
-                            _days[dayIndex]
-                                .exercises[exerciseIndex] = exercise.copyWith(
-                              duration:
-                                  value.isEmpty ? null : int.tryParse(value),
-                            );
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String?>(
-                  decoration: InputDecoration(
-                    labelText: 'گروه سوپرست (اختیاری)',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[800],
                   ),
-                  value: exercise.supersetGroupId,
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text(
-                        'بدون سوپرست',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                if (exercise.duration != null)
+                  Text(
+                    'مدت زمان: ${exercise.duration} ثانیه',
+                    style: GoogleFonts.vazirmatn(
+                      color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                      fontSize: 12,
                     ),
-                    ...Provider.of<WorkoutPlanProvider>(
-                      context,
-                      listen: false,
-                    ).supersetGroups.keys.map(
-                      (groupId) => DropdownMenuItem<String>(
-                        value: groupId,
-                        child: Text(
-                          'سوپرست $groupId',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    _updateExerciseSuperset(dayIndex, exerciseIndex, value);
-                  },
-                  dropdownColor: Colors.grey[900],
-                  style: const TextStyle(color: Colors.white),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  initialValue: exercise.notes ?? '',
-                  decoration: InputDecoration(
-                    labelText: 'یادداشت‌ها (اختیاری)',
-                    labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Colors.amber),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[800],
                   ),
-                  style: const TextStyle(color: Colors.white),
-                  onChanged: (value) {
-                    setState(() {
-                      _days[dayIndex].exercises[exerciseIndex] = exercise
-                          .copyWith(notes: value.isEmpty ? null : value);
-                    });
-                  },
-                ),
+                if (exercise.weight != null)
+                  Text(
+                    'وزن: ${exercise.weight} کیلوگرم',
+                    style: GoogleFonts.vazirmatn(
+                      color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                      fontSize: 12,
+                    ),
+                  ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
-            onPressed: () => _removeExercise(dayIndex, exerciseIndex),
+            icon: const Icon(Icons.delete),
+            color: Colors.redAccent,
+            onPressed: () {
+              setState(() {
+                day.exercises.removeAt(index);
+              });
+            },
           ),
         ],
       ),
+    ).animate().fadeIn(duration: 300.ms).slideX();
+  }
+
+  void _savePlan() {
+    if (_planNameController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لطفاً نام برنامه را وارد کنید!')),
+      );
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
+      context,
+      listen: false,
+    );
+
+    final newPlan = WorkoutPlanModel(
+      createdBy: authProvider.userId ?? '',
+      planName: _planNameController.text,
+      days: _days,
+    );
+
+    workoutPlanProvider.addPlan(
+      newPlan,
+      onSuccess: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('برنامه با موفقیت ذخیره شد!')),
+        );
+        setState(() {
+          _planNameController.clear();
+          _days = [WorkoutDay(dayName: 'روز ۱', exercises: [])];
+          _selectedPlan = null;
+        });
+      },
+      onFailure: (error) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+      },
+    );
+  }
+
+  void _updatePlan() {
+    if (_planNameController.text.isEmpty || _selectedPlan == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لطفاً برنامه را انتخاب و نام را وارد کنید!'),
+        ),
+      );
+      return;
+    }
+
+    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
+      context,
+      listen: false,
+    );
+
+    final updatedPlan = _selectedPlan!.copyWith(
+      planName: _planNameController.text,
+      days: _days,
+      updatedAt: DateTime.now(),
+    );
+
+    workoutPlanProvider.updatePlan(
+      _selectedPlan!.id,
+      updatedPlan.toJson(),
+      onSuccess: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('برنامه با موفقیت آپدیت شد!')),
+        );
+        setState(() {
+          _planNameController.clear();
+          _days = [WorkoutDay(dayName: 'روز ۱', exercises: [])];
+          _selectedPlan = null;
+        });
+      },
+      onFailure: (error) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+      },
+    );
+  }
+
+  void _deletePlan(String id) {
+    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
+      context,
+      listen: false,
+    );
+
+    workoutPlanProvider.deletePlan(
+      id,
+      onSuccess: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('برنامه با موفقیت حذف شد!')),
+        );
+        setState(() {
+          _planNameController.clear();
+          _days = [WorkoutDay(dayName: 'روز ۱', exercises: [])];
+          _selectedPlan = null;
+        });
+      },
+      onFailure: (error) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(context);
+    final savedPlans = workoutPlanProvider.coachPlans;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: _isDarkTheme ? Colors.blueGrey.shade900 : Colors.white,
+        elevation: 0,
+        title: Text(
+          'برنامه تمرینی',
+          style: GoogleFonts.vazirmatn(
+            color: _isDarkTheme ? Colors.yellow : Colors.black87,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(_isDarkTheme ? Icons.brightness_7 : Icons.brightness_4),
+            onPressed: () {
+              setState(() {
+                _isDarkTheme = !_isDarkTheme;
+              });
+            },
+          ),
+        ],
+      ),
+      body:
+          workoutPlanProvider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _planNameController,
+                      decoration: InputDecoration(
+                        labelText: 'نام برنامه',
+                        labelStyle: GoogleFonts.vazirmatn(
+                          color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor:
+                            _isDarkTheme
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.grey.shade100,
+                      ),
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'روزهای برنامه',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white : Colors.black87,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ..._days.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final day = entry.value;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color:
+                              _isDarkTheme
+                                  ? Colors.white.withOpacity(0.05)
+                                  : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color:
+                                _isDarkTheme
+                                    ? Colors.yellow.withOpacity(0.2)
+                                    : Colors.black12,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  day.dayName,
+                                  style: GoogleFonts.vazirmatn(
+                                    color:
+                                        _isDarkTheme
+                                            ? Colors.white
+                                            : Colors.black87,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                if (_days.length > 1)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () => _removeDay(index),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            if (day.exercises.isEmpty)
+                              Text(
+                                'تمرینی اضافه نشده است',
+                                style: GoogleFonts.vazirmatn(
+                                  color:
+                                      _isDarkTheme
+                                          ? Colors.white70
+                                          : Colors.black54,
+                                  fontSize: 14,
+                                ),
+                              )
+                            else
+                              ...day.exercises.asMap().entries.map((entry) {
+                                final exerciseIndex = entry.key;
+                                final exercise = entry.value;
+                                return _buildExerciseCard(
+                                  exercise,
+                                  exerciseIndex,
+                                  day,
+                                );
+                              }),
+                            const SizedBox(height: 10),
+                            Center(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _addExercise(index),
+                                icon: const Icon(Icons.add),
+                                label: Text(
+                                  'اضافه کردن تمرین',
+                                  style: GoogleFonts.vazirmatn(),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.yellow,
+                                  foregroundColor: Colors.black,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: ElevatedButton.icon(
+                        onPressed: _addDay,
+                        icon: const Icon(Icons.add),
+                        label: Text(
+                          'اضافه کردن روز',
+                          style: GoogleFonts.vazirmatn(),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'برنامه‌های ذخیره‌شده',
+                      style: GoogleFonts.vazirmatn(
+                        color: _isDarkTheme ? Colors.white : Colors.black87,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (savedPlans.isEmpty)
+                      Text(
+                        'هیچ برنامه‌ای ذخیره نشده است',
+                        style: GoogleFonts.vazirmatn(
+                          color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                          fontSize: 14,
+                        ),
+                      )
+                    else
+                      ...savedPlans.map((plan) {
+                        return ListTile(
+                          title: Text(
+                            plan.planName,
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'روزها: ${plan.days.length}',
+                            style: GoogleFonts.vazirmatn(
+                              color:
+                                  _isDarkTheme
+                                      ? Colors.white70
+                                      : Colors.black54,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedPlan = plan;
+                                    _planNameController.text = plan.planName;
+                                    _days = List.from(plan.days);
+                                  });
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () => _deletePlan(plan.id),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed:
+                              _selectedPlan == null ? _savePlan : _updatePlan,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                _selectedPlan == null
+                                    ? Colors.blue
+                                    : Colors.orange,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                          ),
+                          child: Text(
+                            _selectedPlan == null
+                                ? 'ذخیره برنامه'
+                                : 'آپدیت برنامه',
+                            style: GoogleFonts.vazirmatn(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        if (_selectedPlan != null)
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _planNameController.clear();
+                                _days = [
+                                  WorkoutDay(dayName: 'روز ۱', exercises: []),
+                                ];
+                                _selectedPlan = null;
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                            ),
+                            child: Text(
+                              'لغو ویرایش',
+                              style: GoogleFonts.vazirmatn(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
     );
   }
 }

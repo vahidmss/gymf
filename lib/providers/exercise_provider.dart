@@ -54,7 +54,7 @@ class ExerciseProvider with ChangeNotifier {
           data.map((json) {
             final username =
                 json['profiles'] != null
-                    ? json['profiles']['username'] as String
+                    ? json['profiles']['username'] as String? ?? 'ناشناس'
                     : 'ناشناس';
             return ExerciseModel.fromJson(
               json,
@@ -66,6 +66,8 @@ class ExerciseProvider with ChangeNotifier {
     } catch (e, stacktrace) {
       print('❌ خطا در گرفتن همه تمرین‌ها: $e');
       print('🔍 جزئیات بیشتر: $stacktrace');
+      _exercises = []; // پیش‌فرض خالی برای جلوگیری از کرش
+      notifyListeners();
       rethrow;
     }
   }
@@ -114,6 +116,11 @@ class ExerciseProvider with ChangeNotifier {
   }
 
   void setCountingType(String? countingType) {
+    if (countingType != null &&
+        !['وزن (kg)', 'تایم', 'تعداد'].contains(countingType)) {
+      print('⚠️ نوع شمارش نامعتبر: $countingType');
+      return;
+    }
     if (_selectedCountingType != countingType) {
       _selectedCountingType = countingType;
       notifyListeners();
@@ -179,8 +186,14 @@ class ExerciseProvider with ChangeNotifier {
 
   Future<String> uploadFile(File file, String path) async {
     try {
+      if (!await file.exists()) {
+        throw Exception('فایل وجود ندارد: ${file.path}');
+      }
       final user = Supabase.instance.client.auth.currentUser;
-      print('👤 کاربر فعلی: ${user?.id ?? "لاگین نشده"}');
+      if (user == null) {
+        throw Exception('کاربر وارد نشده است');
+      }
+      print('👤 کاربر فعلی: ${user.id}');
       print('⬆️ شروع آپلود فایل: $path');
       print('📂 مسیر فایل محلی: ${file.path}');
       await Supabase.instance.client.storage
@@ -196,7 +209,6 @@ class ExerciseProvider with ChangeNotifier {
       final url = Supabase.instance.client.storage
           .from('exercise-media')
           .getPublicUrl(path);
-      // چک کردن اینکه URL معتبر است
       final uri = Uri.tryParse(url);
       if (uri == null ||
           (!uri.scheme.contains('http') && !uri.scheme.contains('https'))) {
@@ -296,7 +308,7 @@ class ExerciseProvider with ChangeNotifier {
         description: description,
         imageUrl: imageUrl,
         videoUrl: videoUrl,
-        countingType: _selectedCountingType,
+        countingType: _selectedCountingType!,
       );
 
       print('💾 مدل تمرین قبل از ذخیره: ${exercise.toJson()}');
@@ -329,8 +341,7 @@ class ExerciseProvider with ChangeNotifier {
             (targetMuscle != null && category == 'قدرتی'
                 ? exercise.targetMuscle == targetMuscle
                 : true),
-        orElse:
-            () => ExerciseModel(id: '', name: '', category: '', createdBy: ''),
+        orElse: () => ExerciseModel.empty(),
       );
     } catch (e) {
       print('❌ خطا در چک کردن تمرین تکراری: $e');
@@ -353,6 +364,8 @@ class ExerciseProvider with ChangeNotifier {
       return _coachExercises;
     } catch (e) {
       print('❌ خطا در دریافت تمرینات: $e');
+      _coachExercises = []; // پیش‌فرض خالی
+      notifyListeners();
       return [];
     }
   }
@@ -374,20 +387,28 @@ class ExerciseProvider with ChangeNotifier {
       );
       _searchResults =
           exercises.where((exercise) {
-            final matchesCategory = exercise.category == category;
+            final matchesCategory =
+                category == 'همه' || exercise.category == category;
             final matchesMuscle =
-                targetMuscle != null && category == 'قدرتی'
-                    ? exercise.targetMuscle == targetMuscle
-                    : true;
+                targetMuscle == null || targetMuscle == 'همه'
+                    ? true
+                    : exercise.targetMuscle == targetMuscle;
             final matchesName = exercise.name.toLowerCase().contains(
               searchQuery.toLowerCase(),
             );
-            return matchesCategory && matchesMuscle && matchesName;
+            final matchesUser = userId.isEmpty || exercise.createdBy == userId;
+            return matchesCategory &&
+                matchesMuscle &&
+                matchesName &&
+                matchesUser;
           }).toList();
       print('✅ سرچ تموم شد: ${_searchResults.length} نتیجه');
+      notifyListeners();
       return _searchResults;
     } catch (e) {
       print('❌ خطا در جستجوی تمرینات: $e');
+      _searchResults = []; // پیش‌فرض خالی
+      notifyListeners();
       return [];
     }
   }
@@ -395,7 +416,15 @@ class ExerciseProvider with ChangeNotifier {
   Future<void> deleteExercise(String exerciseId) async {
     if (!_isValidUUID(exerciseId)) return;
     try {
+      final exercise = _exercises.firstWhere(
+        (e) => e.id == exerciseId,
+        orElse: () => ExerciseModel.empty(),
+      );
+      if (exercise.createdBy != authProvider.userId) {
+        throw Exception('شما اجازه حذف این تمرین را ندارید');
+      }
       await _exerciseService.deleteExercise(exerciseId);
+      _exercises.removeWhere((exercise) => exercise.id == exerciseId);
       _coachExercises.removeWhere((exercise) => exercise.id == exerciseId);
       notifyListeners();
     } catch (e) {
@@ -406,11 +435,18 @@ class ExerciseProvider with ChangeNotifier {
   Future<void> updateExercise(String id, Map<String, dynamic> updates) async {
     if (!_isValidUUID(id)) return;
     try {
+      final exercise = _exercises.firstWhere(
+        (e) => e.id == id,
+        orElse: () => ExerciseModel.empty(),
+      );
+      if (exercise.createdBy != authProvider.userId) {
+        throw Exception('شما اجازه ویرایش این تمرین را ندارید');
+      }
       await _exerciseService.updateExercise(id, {
         ...updates,
         'updated_at': DateTime.now().toIso8601String(),
       });
-      await fetchCoachExercises(authProvider.userId ?? '');
+      await fetchAllExercises(); // به‌روزرسانی لیست
     } catch (e) {
       print('❌ خطا در بروزرسانی تمرین: $e');
     }

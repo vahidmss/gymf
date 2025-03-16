@@ -9,6 +9,7 @@ import 'package:gymf/ui/screens/auth/login_screen.dart';
 import 'package:gymf/ui/screens/auth/signup_screen.dart';
 import 'package:gymf/ui/screens/auth/complete_profile_screen.dart';
 import 'package:gymf/ui/screens/dashboard_screen.dart';
+import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
 import 'package:gymf/data/models/exercise_model.dart';
 import 'package:provider/provider.dart';
@@ -155,6 +156,8 @@ class MyApp extends StatelessWidget {
               '/workout-plan': (context) => const WorkoutPlanScreen(),
               '/exercise-list':
                   (context) => const ExerciseListScreen(), // مسیر جدید
+              '/submit-exercise':
+                  (context) => const ExerciseSubmissionScreen(), // مسیر جدید
             },
             onGenerateRoute: (settings) {
               if (settings.name == '/edit-exercise') {

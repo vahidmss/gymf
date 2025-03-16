@@ -10,7 +10,7 @@ class ExerciseModel {
   final String? description;
   final String? imageUrl;
   final String? videoUrl;
-  final String? countingType;
+  final String countingType; // اجباری کردن
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -24,7 +24,7 @@ class ExerciseModel {
     this.description,
     this.imageUrl,
     this.videoUrl,
-    this.countingType,
+    required this.countingType, // اجباری کردن
     DateTime? createdAt,
     this.updatedAt,
   }) : id = id ?? const Uuid().v4(),
@@ -40,24 +40,35 @@ class ExerciseModel {
       description: null,
       imageUrl: null,
       videoUrl: null,
-      countingType: null,
+      countingType: '', // خالی، ولی بعداً باید مقدار بگیری
       createdAt: DateTime.now(),
       updatedAt: null,
     );
   }
 
   factory ExerciseModel.fromJson(Map<String, dynamic> json) {
+    // اعتبارسنجی فیلدهای اجباری
+    if (json['category'] == null || json['category'] is! String) {
+      throw ArgumentError('category نمی‌تواند خالی باشد');
+    }
+    if (json['name'] == null || json['name'] is! String) {
+      throw ArgumentError('name نمی‌تواند خالی باشد');
+    }
+    if (json['counting_type'] == null || json['counting_type'] is! String) {
+      throw ArgumentError('counting_type نمی‌تواند خالی باشد');
+    }
+
     return ExerciseModel(
       id: json['id'] as String? ?? const Uuid().v4(),
-      category: json['category'] as String? ?? 'بدون دسته‌بندی',
+      category: json['category'] as String,
       targetMuscle: json['target_muscle'] as String?,
-      name: json['name'] as String? ?? 'بدون نام',
+      name: json['name'] as String,
       createdBy: json['created_by'] as String? ?? '',
       creatorUsername: json['creator_username'] as String?, // جدید
       description: json['description'] as String?,
       imageUrl: json['image_url'] as String?,
       videoUrl: json['video_url'] as String?,
-      countingType: json['counting_type'] as String?,
+      countingType: json['counting_type'] as String,
       createdAt:
           (json['created_at'] != null)
               ? DateTime.tryParse(json['created_at'] as String) ??
@@ -120,5 +131,13 @@ class ExerciseModel {
   @override
   String toString() {
     return 'ExerciseModel(id: $id, category: $category, targetMuscle: $targetMuscle, name: $name, createdBy: $createdBy, creatorUsername: $creatorUsername, countingType: $countingType, createdAt: $createdAt, updatedAt: $updatedAt)';
+  }
+
+  // متد اعتبارسنجی
+  bool validate() {
+    if (category.isEmpty || name.isEmpty || countingType.isEmpty) {
+      return false;
+    }
+    return true;
   }
 }
