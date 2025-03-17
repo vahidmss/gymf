@@ -1,4 +1,5 @@
 import 'package:gymf/data/models/UserProfileModel.dart';
+import 'package:gymf/data/models/user_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileService {

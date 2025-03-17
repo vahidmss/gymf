@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:gymf/core/utils/auth_wrapper.dart';
+import 'package:gymf/core/utils/app_routes.dart';
 import 'package:gymf/providers/CoachProvider.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:gymf/providers/auth_provider.dart';
@@ -8,6 +10,7 @@ import 'package:gymf/ui/screens/EditExerciseScreen.dart';
 import 'package:gymf/ui/screens/ExerciseListScreen.dart';
 import 'package:gymf/ui/screens/ProfileScreen.dart';
 import 'package:gymf/ui/screens/RegisterAsCoachScreen.dart';
+import 'package:gymf/ui/screens/WorkoutLogScreen.dart';
 import 'package:gymf/ui/screens/WorkoutPlanScreen.dart';
 import 'package:gymf/ui/screens/auth/login_screen.dart';
 import 'package:gymf/ui/screens/auth/signup_screen.dart';
@@ -15,8 +18,9 @@ import 'package:gymf/ui/screens/auth/complete_profile_screen.dart';
 import 'package:gymf/ui/screens/dashboard_screen.dart';
 import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
-import 'package:gymf/ui/screens/coaches_screen.dart'; // اضافه کردن CoachesScreen
+import 'package:gymf/ui/screens/coaches_screen.dart';
 import 'package:gymf/data/models/exercise_model.dart';
+import 'package:gymf/ui/screens/edit_profile_screen.dart'; // اضافه کردن این import
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -107,24 +111,6 @@ class _LoadingAppState extends State<LoadingApp> {
   }
 }
 
-class AppRoutes {
-  static const String login = '/login';
-  static const String signup = '/signup';
-  static const String completeProfile = '/complete-profile';
-  static const String dashboard = '/dashboard';
-  static const String home = '/home';
-  static const String workoutPlan = '/workout-plan';
-  static const String exerciseList = '/exercise-list';
-  static const String submitExercise = '/submit-exercise';
-  static const String editExercise = '/edit-exercise';
-  static const String coaches = '/coaches';
-  static const String profile = '/profile'; // مسیر جدید
-  static const String registerAsCoach = '/register-as-coach'; // مسیر جدید
-  static const String adminCoachApproval = '/admin-coach-approval'; // مسیر جدید
-  static const String workoutLog = '/workout-log';
-  static const String editProfile = '/edit-profile'; // اضافه کردن مسیر جدید
-}
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -175,11 +161,12 @@ class MyApp extends StatelessWidget {
           AppRoutes.submitExercise:
               (context) => const ExerciseSubmissionScreen(),
           AppRoutes.coaches: (context) => const CoachesScreen(),
-          AppRoutes.profile: (context) => const ProfileScreen(), // مسیر جدید
-          AppRoutes.registerAsCoach:
-              (context) => const RegisterAsCoachScreen(), // مسیر جدید
+          AppRoutes.profile: (context) => const ProfileScreen(),
+          AppRoutes.registerAsCoach: (context) => const RegisterAsCoachScreen(),
           AppRoutes.adminCoachApproval:
-              (context) => const AdminCoachApprovalScreen(), // مسیر جدید
+              (context) => const AdminCoachApprovalScreen(),
+          AppRoutes.workoutLog: (context) => const WorkoutLogScreen(),
+          AppRoutes.editProfile: (context) => const EditProfileScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == AppRoutes.editExercise) {
@@ -190,107 +177,15 @@ class MyApp extends StatelessWidget {
           }
           return null;
         },
+        onUnknownRoute: (settings) {
+          return MaterialPageRoute(
+            builder:
+                (context) => Scaffold(
+                  body: Center(child: Text('صفحه ${settings.name} پیدا نشد!')),
+                ),
+          );
+        },
       ),
     );
-  }
-}
-
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  _AuthWrapperState createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  bool? _isAuthenticated;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthStatus();
-  }
-
-  Future<void> _checkAuthStatus() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    try {
-      final isAuthenticated = await authProvider.checkAuthStatus();
-      setState(() {
-        _isAuthenticated = isAuthenticated;
-      });
-      if (isAuthenticated) {
-        final exerciseProvider = Provider.of<ExerciseProvider>(
-          context,
-          listen: false,
-        );
-        final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
-          context,
-          listen: false,
-        );
-        final coachProvider = Provider.of<CoachProvider>(
-          context,
-          listen: false,
-        );
-
-        await authProvider.loadInitialData(
-          exerciseProvider: exerciseProvider,
-          workoutPlanProvider: workoutPlanProvider,
-          coachProvider: coachProvider,
-        );
-        // بعد از اتمام لود، تغییر حالت رو اعمال می‌کنیم
-        authProvider.notifyListeners();
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-
-    if (_isAuthenticated == null) {
-      print('🔄 در حال بررسی وضعیت احراز هویت...');
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (_errorMessage != null) {
-      print('❌ خطا در بررسی وضعیت احراز هویت: $_errorMessage');
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'خطا در بررسی وضعیت: $_errorMessage',
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, AppRoutes.login);
-                },
-                child: const Text('رفتن به صفحه ورود'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_isAuthenticated == true) {
-      print('✅ کاربر وارد شده است، انتقال به داشبورد...');
-      if (authProvider.isLoading) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
-      }
-      return const DashboardScreen();
-    } else {
-      print('🔑 کاربر وارد نشده است، انتقال به صفحه ورود...');
-      return const LoginScreen();
-    }
   }
 }

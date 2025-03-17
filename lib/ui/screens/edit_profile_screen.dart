@@ -95,10 +95,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ).showSnackBar(SnackBar(content: Text('خطا: $e')));
                   }
                 },
-                child: Text(
-                  'ذخیره تغییرات',
-                  style: GoogleFonts.vazirmatn(color: Colors.white),
-                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.yellow.shade800,
                   padding: const EdgeInsets.symmetric(
@@ -108,6 +104,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                ),
+                child: Text(
+                  'ذخیره تغییرات',
+                  style: GoogleFonts.vazirmatn(color: Colors.white),
                 ),
               ),
             ],

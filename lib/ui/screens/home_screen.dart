@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gymf/core/utils/app_routes.dart';
 import 'package:gymf/main.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';

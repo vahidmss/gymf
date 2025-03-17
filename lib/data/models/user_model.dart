@@ -14,6 +14,7 @@ class UserProfileModel {
   final int studentCount; // برای مربی‌ها
   final double rating; // برای مربی‌ها
   final String? avatarUrl; // اضافه کردن فیلد avatarUrl
+
   UserProfileModel({
     required this.id,
     required this.username,
@@ -29,30 +30,34 @@ class UserProfileModel {
     this.experienceYears,
     this.studentCount = 0,
     this.rating = 0.0,
-    this.avatarUrl, // اضافه کردن به سازنده
+    this.avatarUrl,
   });
 
   factory UserProfileModel.fromJson(Map<String, dynamic> json) {
     return UserProfileModel(
-      id: json['id'],
-      username: json['username'] ?? 'نامشخص',
-      email: json['email'],
-      profileImageUrl: json['profile_image_url'],
-      bio: json['bio'],
-      isCoach: json['is_coach'] ?? false,
-      isAdmin: json['is_admin'] ?? false,
-      avatarUrl: json['avatar_url'] as String?, // خواندن از JSON
-      createdAt: DateTime.parse(
-        json['created_at'] ?? DateTime.now().toIso8601String(),
-      ),
-      updatedAt: DateTime.parse(
-        json['updated_at'] ?? DateTime.now().toIso8601String(),
-      ),
-      certifications: List<String>.from(json['certifications'] ?? []),
-      achievements: List<String>.from(json['achievements'] ?? []),
-      experienceYears: json['experience_years'],
-      studentCount: json['student_count'] ?? 0,
+      id: json['id'] as String? ?? '', // برای جلوگیری از null
+      username: json['username'] as String? ?? 'نامشخص',
+      email: json['email'] as String?,
+      profileImageUrl: json['profile_image_url'] as String?,
+      bio: json['bio'] as String?,
+      isCoach: json['is_coach'] as bool? ?? false,
+      isAdmin: json['is_admin'] as bool? ?? false,
+      createdAt:
+          json['created_at'] != null
+              ? DateTime.parse(json['created_at'] as String)
+              : DateTime.now(),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.parse(json['updated_at'] as String)
+              : DateTime.now(),
+      certifications:
+          (json['certifications'] as List<dynamic>?)?.cast<String>() ?? [],
+      achievements:
+          (json['achievements'] as List<dynamic>?)?.cast<String>() ?? [],
+      experienceYears: json['experience_years'] as int?,
+      studentCount: json['student_count'] as int? ?? 0,
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      avatarUrl: json['avatar_url'] as String?,
     );
   }
 
@@ -69,10 +74,10 @@ class UserProfileModel {
       'updated_at': updatedAt.toIso8601String(),
       'certifications': certifications,
       'achievements': achievements,
-      'avatar_url': avatarUrl, // اضافه کردن به JSON
       'experience_years': experienceYears,
       'student_count': studentCount,
       'rating': rating,
+      'avatar_url': avatarUrl,
     };
   }
 }

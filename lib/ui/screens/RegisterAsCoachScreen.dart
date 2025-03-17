@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:gymf/core/services/CoachRegistrationService.dart';
+import 'package:gymf/data/models/PendingCoachModel.dart';
 import 'package:provider/provider.dart';
 import 'package:gymf/providers/auth_provider.dart';
 
@@ -10,77 +9,63 @@ class RegisterAsCoachScreen extends StatefulWidget {
   const RegisterAsCoachScreen({super.key});
 
   @override
-  State<RegisterAsCoachScreen> createState() => _RegisterAsCoachScreenState();
+  _RegisterAsCoachScreenState createState() => _RegisterAsCoachScreenState();
 }
 
 class _RegisterAsCoachScreenState extends State<RegisterAsCoachScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _bioController = TextEditingController();
   final _certificationsController = TextEditingController();
-  final _achievementsController = TextEditingController();
   final _experienceYearsController = TextEditingController();
-  String? _identityDocumentPath;
-  String? _certificatesPath;
   bool _isLoading = false;
 
-  Future<void> _pickFile(bool isIdentity) async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (result != null && result.files.single.path != null) {
-      setState(() {
-        if (isIdentity) {
-          _identityDocumentPath = result.files.single.path;
-        } else {
-          _certificatesPath = result.files.single.path;
-        }
-      });
-    }
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    _certificationsController.dispose();
+    _experienceYearsController.dispose();
+    super.dispose();
   }
 
-  Future<void> _submitApplication() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final userId = authProvider.userId;
-    if (userId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('لطفاً وارد شوید!')));
-      return;
-    }
-
-    if (_identityDocumentPath == null || _certificatesPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً تمام مدارک را آپلود کنید!')),
-      );
-      return;
-    }
+  Future<void> _submitRequest() async {
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;
     });
 
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final userId = authProvider.currentUser!.id;
+
+    final request = PendingCoachModel(
+      id: userId,
+      name: _nameController.text,
+      bio: _bioController.text,
+      certifications:
+          _certificationsController.text
+              .split(',')
+              .map((e) => e.trim())
+              .toList(),
+      achievements: [], // چون توی فرم نیست، خالی می‌ذاریم
+      experienceYears: int.tryParse(_experienceYearsController.text),
+      studentCount: 0, // چون توی فرم نیست، پیش‌فرض 0
+      rating: 0.0, // چون توی فرم نیست، پیش‌فرض 0.0
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
     try {
-      final service = CoachRegistrationService();
-      await service.submitCoachApplication(
-        userId: userId,
-        certifications:
-            _certificationsController.text
-                .split(',')
-                .map((e) => e.trim())
-                .toList(),
-        achievements:
-            _achievementsController.text
-                .split(',')
-                .map((e) => e.trim())
-                .toList(),
-        experienceYears: int.parse(_experienceYearsController.text),
-        identityDocumentPath: _identityDocumentPath!,
-        certificatesPath: _certificatesPath!,
-      );
+      await CoachRegistrationService().submitCoachRequest(request);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('درخواست شما با موفقیت ارسال شد!')),
+        const SnackBar(content: Text('درخواست شما با موفقیت ثبت شد!')),
       );
       Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('خطا در ارسال درخواست: $e')));
+      ).showSnackBar(SnackBar(content: Text('خطا: $e')));
     } finally {
       setState(() {
         _isLoading = false;
@@ -90,65 +75,144 @@ class _RegisterAsCoachScreenState extends State<RegisterAsCoachScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'ثبت‌نام به‌عنوان مربی',
-          style: GoogleFonts.vazirmatn(fontWeight: FontWeight.bold),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.black,
+            Colors.blueGrey.shade900,
+            Colors.yellow.shade800,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.5, 1.0],
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _certificationsController,
-              decoration: const InputDecoration(
-                labelText: 'مدارک (با کاما جدا کنید)',
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(
+            'درخواست مربی شدن',
+            style: GoogleFonts.vazirmatn(
+              textStyle: const TextStyle(
+                color: Colors.yellow,
+                fontWeight: FontWeight.bold,
+                fontSize: 24,
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _achievementsController,
-              decoration: const InputDecoration(
-                labelText: 'افتخارات (با کاما جدا کنید)',
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _experienceYearsController,
-              decoration: const InputDecoration(labelText: 'سال تجربه'),
-              keyboardType: TextInputType.number, // جابه‌جایی به اینجا
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _pickFile(true),
-              child: Text(
-                _identityDocumentPath == null
-                    ? 'آپلود مدارک هویتی'
-                    : 'مدارک هویتی انتخاب شد',
-                style: GoogleFonts.vazirmatn(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _pickFile(false),
-              child: Text(
-                _certificatesPath == null
-                    ? 'آپلود مدارک مربی‌گری'
-                    : 'مدارک مربی‌گری انتخاب شد',
-                style: GoogleFonts.vazirmatn(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                  onPressed: _submitApplication,
-                  child: Text('ارسال درخواست', style: GoogleFonts.vazirmatn()),
+          ),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'نام کامل',
+                    labelStyle: GoogleFonts.vazirmatn(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  style: GoogleFonts.vazirmatn(color: Colors.white),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'لطفاً نام کامل خود را وارد کنید';
+                    }
+                    return null;
+                  },
                 ),
-          ],
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _bioController,
+                  decoration: InputDecoration(
+                    labelText: 'بیوگرافی',
+                    labelStyle: GoogleFonts.vazirmatn(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  style: GoogleFonts.vazirmatn(color: Colors.white),
+                  maxLines: 3,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'لطفاً بیوگرافی خود را وارد کنید';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _certificationsController,
+                  decoration: InputDecoration(
+                    labelText: 'گواهینامه‌ها (با کاما جدا کنید)',
+                    labelStyle: GoogleFonts.vazirmatn(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  style: GoogleFonts.vazirmatn(color: Colors.white),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'لطفاً گواهینامه‌ها را وارد کنید';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _experienceYearsController,
+                  decoration: InputDecoration(
+                    labelText: 'سال‌های تجربه',
+                    labelStyle: GoogleFonts.vazirmatn(color: Colors.white),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  style: GoogleFonts.vazirmatn(color: Colors.white),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'لطفاً سال‌های تجربه را وارد کنید';
+                    }
+                    if (int.tryParse(value) == null) {
+                      return 'لطفاً یک عدد معتبر وارد کنید';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _submitRequest,
+                  child:
+                      _isLoading
+                          ? const CircularProgressIndicator()
+                          : Text(
+                            'ارسال درخواست',
+                            style: GoogleFonts.vazirmatn(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.yellow.shade800,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

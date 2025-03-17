@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gymf/data/models/PendingCoachModel.dart';
 import 'package:gymf/providers/CoachProvider.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -263,23 +264,88 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> signInWithUsername(String username, String password) async {
+  Future<void> requestCoachRole({
+    required String name,
+    required String bio,
+    required List<String> certifications,
+    required List<String> achievements,
+    required int? experienceYears,
+    required int studentCount,
+    required double rating,
+  }) async {
     try {
-      print('🔄 ورود با یوزرنیم: $username');
+      print('🔄 ثبت درخواست برای مربی شدن...');
       _isLoading = true;
       notifyListeners();
 
-      final userData = await getUserDataByUsername(username);
-      if (userData == null) {
-        throw Exception('یوزرنیم اشتباه است.');
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('کاربر وارد نشده است.');
       }
 
-      final email = userData.email;
-      if (email == null || email.isEmpty) {
-        throw Exception('ایمیل کاربر یافت نشد، لطفاً با گوگل وارد شوید.');
-      }
+      final pendingCoachData = PendingCoachModel(
+        id: userId,
+        name: name,
+        bio: bio,
+        certifications: certifications,
+        achievements: achievements,
+        experienceYears: experienceYears,
+        studentCount: studentCount,
+        rating: rating,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
 
-      await _supabase.auth.signInWithPassword(email: email, password: password);
+      await _supabase
+          .from('pending_coaches')
+          .upsert(pendingCoachData.toJson())
+          .timeout(const Duration(seconds: 10));
+
+      print('✅ درخواست مربی شدن با موفقیت ثبت شد.');
+    } catch (e) {
+      print('❌ خطا در ثبت درخواست مربی شدن: $e');
+      throw Exception('خطا در ثبت درخواست: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> signInWithUsername(String input, String password) async {
+    try {
+      print('🔄 ورود با ورودی: $input');
+      _isLoading = true;
+      notifyListeners();
+
+      UserProfileModel? userData;
+
+      // چک کردن اینکه ورودی ایمیل هست یا یوزرنیم
+      if (input.contains('@')) {
+        // اگه ایمیل بود، با ایمیل مستقیم وارد می‌شه
+        await _supabase.auth.signInWithPassword(
+          email: input,
+          password: password,
+        );
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId == null) {
+          throw Exception('کاربر یافت نشد.');
+        }
+        userData = await getUserData(userId);
+      } else {
+        // اگه یوزرنیم بود، مثل قبل عمل می‌کنه
+        userData = await getUserDataByUsername(input);
+        if (userData == null) {
+          throw Exception('یوزرنیم اشتباه است.');
+        }
+        final email = userData.email;
+        if (email == null || email.isEmpty) {
+          throw Exception('ایمیل کاربر یافت نشد، لطفاً با گوگل وارد شوید.');
+        }
+        await _supabase.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+      }
 
       _currentUser = userData;
       _isCoach = _currentUser!.isCoach;

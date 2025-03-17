@@ -3,12 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:gymf/data/models/exercise_model.dart';
 import 'package:gymf/data/models/workout_plan_model.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/providers/exercise_provider.dart';
-import 'package:animate_do/animate_do.dart';
 
 class WorkoutPlanScreen extends StatefulWidget {
   const WorkoutPlanScreen({super.key});

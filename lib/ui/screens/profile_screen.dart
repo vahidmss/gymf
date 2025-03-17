@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gymf/core/utils/app_routes.dart';
 import 'package:gymf/main.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -266,8 +267,7 @@ class ProfileScreen extends StatelessWidget {
                                             ),
                                           ),
                                         ),
-                                      )
-                                      .toList(),
+                                      ),
                                 ],
                                 const SizedBox(height: 8),
                                 if (authProvider
@@ -282,22 +282,20 @@ class ProfileScreen extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  ...authProvider.currentUser!.achievements
-                                      .map(
-                                        (achieve) => Padding(
-                                          padding: const EdgeInsets.only(
-                                            right: 16.0,
-                                          ),
-                                          child: Text(
-                                            '- $achieve',
-                                            style: GoogleFonts.vazirmatn(
-                                              color: Colors.white,
-                                              fontSize: 14,
-                                            ),
-                                          ),
+                                  ...authProvider.currentUser!.achievements.map(
+                                    (achieve) => Padding(
+                                      padding: const EdgeInsets.only(
+                                        right: 16.0,
+                                      ),
+                                      child: Text(
+                                        '- $achieve',
+                                        style: GoogleFonts.vazirmatn(
+                                          color: Colors.white,
+                                          fontSize: 14,
                                         ),
-                                      )
-                                      .toList(),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ],
                             ),

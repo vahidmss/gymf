@@ -1,40 +1,63 @@
 class PendingCoachModel {
   final String id;
-  final String userId;
-  final String username;
+  final String? name;
+  final String? bio;
   final List<String> certifications;
   final List<String> achievements;
-  final int experienceYears;
-  final String identityDocumentUrl;
-  final String certificatesUrl;
-  final String status;
+  final int? experienceYears;
+  final int studentCount;
+  final double rating;
   final DateTime createdAt;
+  final DateTime updatedAt;
 
   PendingCoachModel({
     required this.id,
-    required this.userId,
-    required this.username,
-    required this.certifications,
-    required this.achievements,
-    required this.experienceYears,
-    required this.identityDocumentUrl,
-    required this.certificatesUrl,
-    required this.status,
+    this.name,
+    this.bio,
+    this.certifications = const [],
+    this.achievements = const [],
+    this.experienceYears,
+    this.studentCount = 0,
+    this.rating = 0.0,
     required this.createdAt,
+    required this.updatedAt,
   });
 
   factory PendingCoachModel.fromJson(Map<String, dynamic> json) {
     return PendingCoachModel(
-      id: json['id'],
-      userId: json['user_id'],
-      username: json['user_id']['username'] ?? 'نامشخص',
-      certifications: List<String>.from(json['certifications'] ?? []),
-      achievements: List<String>.from(json['achievements'] ?? []),
-      experienceYears: json['experience_years'] ?? 0,
-      identityDocumentUrl: json['identity_document_url'] ?? '',
-      certificatesUrl: json['certificates_url'] ?? '',
-      status: json['status'] ?? 'pending',
-      createdAt: DateTime.parse(json['created_at']),
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String?,
+      bio: json['bio'] as String?,
+      certifications:
+          (json['certifications'] as List<dynamic>?)?.cast<String>() ?? [],
+      achievements:
+          (json['achievements'] as List<dynamic>?)?.cast<String>() ?? [],
+      experienceYears: json['experience_years'] as int?,
+      studentCount: json['student_count'] as int? ?? 0,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      createdAt:
+          json['created_at'] != null
+              ? DateTime.parse(json['created_at'] as String)
+              : DateTime.now(),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.parse(json['updated_at'] as String)
+              : DateTime.now(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'bio': bio,
+      'certifications': certifications,
+      'achievements': achievements,
+      'experience_years': experienceYears,
+      'student_count': studentCount,
+      'rating': rating,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
   }
 }

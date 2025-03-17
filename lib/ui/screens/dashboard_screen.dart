@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gymf/core/utils/app_routes.dart';
 import 'package:gymf/main.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/ui/screens/ExerciseListScreen.dart';
 import 'package:gymf/ui/screens/coaches_screen.dart';
-import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
 import 'package:gymf/ui/screens/profile_screen.dart';
 import 'package:provider/provider.dart';
