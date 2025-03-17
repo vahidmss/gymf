@@ -121,6 +121,8 @@ class AppRoutes {
   static const String profile = '/profile'; // مسیر جدید
   static const String registerAsCoach = '/register-as-coach'; // مسیر جدید
   static const String adminCoachApproval = '/admin-coach-approval'; // مسیر جدید
+  static const String workoutLog = '/workout-log';
+  static const String editProfile = '/edit-profile'; // اضافه کردن مسیر جدید
 }
 
 class MyApp extends StatelessWidget {
@@ -193,75 +195,102 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
-  Future<void> _loadInitialData(BuildContext context) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final exerciseProvider = Provider.of<ExerciseProvider>(
-      context,
-      listen: false,
-    );
-    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
-      context,
-      listen: false,
-    );
-    final coachProvider = Provider.of<CoachProvider>(context, listen: false);
+  @override
+  _AuthWrapperState createState() => _AuthWrapperState();
+}
 
-    await exerciseProvider.fetchAllExercises();
-    await workoutPlanProvider.fetchCoachPlans(authProvider.userId ?? '');
-    await coachProvider.fetchCoaches();
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool? _isAuthenticated;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    try {
+      final isAuthenticated = await authProvider.checkAuthStatus();
+      setState(() {
+        _isAuthenticated = isAuthenticated;
+      });
+      if (isAuthenticated) {
+        final exerciseProvider = Provider.of<ExerciseProvider>(
+          context,
+          listen: false,
+        );
+        final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
+          context,
+          listen: false,
+        );
+        final coachProvider = Provider.of<CoachProvider>(
+          context,
+          listen: false,
+        );
+
+        await authProvider.loadInitialData(
+          exerciseProvider: exerciseProvider,
+          workoutPlanProvider: workoutPlanProvider,
+          coachProvider: coachProvider,
+        );
+        // بعد از اتمام لود، تغییر حالت رو اعمال می‌کنیم
+        authProvider.notifyListeners();
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context);
 
-    return FutureBuilder<bool>(
-      future: authProvider.checkAuthStatus(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          print('🔄 در حال بررسی وضعیت احراز هویت...');
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasError) {
-          print('❌ خطا در بررسی وضعیت احراز هویت: ${snapshot.error}');
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'خطا در بررسی وضعیت: ${snapshot.error}',
-                    style: const TextStyle(color: Colors.red, fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pushReplacementNamed(context, AppRoutes.login);
-                    },
-                    child: const Text('رفتن به صفحه ورود'),
-                  ),
-                ],
+    if (_isAuthenticated == null) {
+      print('🔄 در حال بررسی وضعیت احراز هویت...');
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_errorMessage != null) {
+      print('❌ خطا در بررسی وضعیت احراز هویت: $_errorMessage');
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'خطا در بررسی وضعیت: $_errorMessage',
+                style: const TextStyle(color: Colors.red, fontSize: 16),
+                textAlign: TextAlign.center,
               ),
-            ),
-          );
-        }
-        if (snapshot.data == true) {
-          print('✅ کاربر وارد شده است، انتقال به داشبورد...');
-          // لود داده‌ها رو بعد از ساخت ویجت انجام بده
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _loadInitialData(context);
-          });
-          return const DashboardScreen();
-        } else {
-          print('🔑 کاربر وارد نشده است، انتقال به صفحه ورود...');
-          return const LoginScreen();
-        }
-      },
-    );
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushReplacementNamed(context, AppRoutes.login);
+                },
+                child: const Text('رفتن به صفحه ورود'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_isAuthenticated == true) {
+      print('✅ کاربر وارد شده است، انتقال به داشبورد...');
+      if (authProvider.isLoading) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      return const DashboardScreen();
+    } else {
+      print('🔑 کاربر وارد نشده است، انتقال به صفحه ورود...');
+      return const LoginScreen();
+    }
   }
 }

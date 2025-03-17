@@ -20,7 +20,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
-  // لیست صفحات
   final List<Widget> _screens = [
     const HomeScreen(),
     const ExerciseListScreen(),
@@ -57,7 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('با موفقیت خارج شدید!')));
-      Navigator.pushReplacementNamed(context, '/login');
+      Navigator.pushReplacementNamed(context, AppRoutes.login);
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -85,31 +84,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
             backgroundColor: Colors.transparent,
             appBar: AppBar(
-              title: Consumer<AuthProvider>(
-                builder: (context, authProvider, child) {
-                  return Text(
-                    authProvider.userId != null
-                        ? 'خوش آمدید!'
-                        : 'مدرسه بدنسازی',
-                    style: GoogleFonts.vazirmatn(
-                      textStyle: TextStyle(
-                        color: Colors.yellow,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 24,
-                        shadows: [
-                          Shadow(color: Colors.black54, blurRadius: 5),
-                          Shadow(
-                            color: Colors.yellow.withOpacity(0.5),
-                            blurRadius: 10,
-                          ),
-                        ],
+              title: Text(
+                'مدرسه بدنسازی',
+                style: GoogleFonts.vazirmatn(
+                  textStyle: TextStyle(
+                    color: Colors.yellow,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24,
+                    shadows: [
+                      Shadow(color: Colors.black54, blurRadius: 5),
+                      Shadow(
+                        color: Colors.yellow.withOpacity(0.5),
+                        blurRadius: 10,
                       ),
-                    ),
-                  );
-                },
+                    ],
+                  ),
+                ),
               ),
               backgroundColor: Colors.transparent,
               elevation: 0,
+              leading: Builder(
+                builder:
+                    (context) => IconButton(
+                      icon: const Icon(Icons.menu, color: Colors.yellow),
+                      onPressed: () {
+                        Scaffold.of(context).openDrawer();
+                      },
+                      tooltip: 'منو',
+                    ),
+              ),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.notifications, color: Colors.yellow),
@@ -148,16 +151,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             end: Alignment.bottomRight,
                           ),
                         ),
-                        child: Text(
-                          'منوی کاربری',
-                          style: GoogleFonts.vazirmatn(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(color: Colors.black54, blurRadius: 5),
-                            ],
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'منوی کاربری',
+                              style: GoogleFonts.vazirmatn(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(color: Colors.black54, blurRadius: 5),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              authProvider.currentUser?.username ?? 'کاربر',
+                              style: GoogleFonts.vazirmatn(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       ListTile(
@@ -216,9 +232,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         onTap: () {
                           Navigator.pop(context);
-                          _onTabTapped(
-                            2,
-                          ); // به جای push، از نویگیشن پایین استفاده می‌کنیم
+                          _onTabTapped(2);
                         },
                       ),
                       ListTile(
@@ -232,13 +246,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.pushNamed(
-                            context,
-                            '/workout-log',
-                          ); // فرض می‌کنیم مسیر تعریف شده
+                          Navigator.pushNamed(context, AppRoutes.workoutLog);
                         },
                       ),
-                      if (authProvider.isCoach == false) // فقط برای شاگردها
+                      if (!authProvider.isCoach)
                         ListTile(
                           leading: const Icon(
                             Icons.add_moderator,
@@ -256,7 +267,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
-                      if (authProvider.isAdmin == true) // فقط برای ادمین
+                      if (authProvider.isAdmin)
                         ListTile(
                           leading: const Icon(
                             Icons.admin_panel_settings,
@@ -290,7 +301,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            body: _screens[_currentIndex], // فقط صفحه فعال رو نمایش بده
+            body: _screens[_currentIndex],
             bottomNavigationBar: BottomNavigationBar(
               currentIndex: _currentIndex,
               onTap: _onTabTapped,
