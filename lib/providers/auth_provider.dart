@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:gymf/data/models/user_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/services/otp_service.dart';
-import '../data/models/user_model.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -13,8 +13,13 @@ class AuthProvider with ChangeNotifier {
   final Uuid _uuid = const Uuid();
 
   UserModel? _currentUser;
+  bool _isCoach = false; // اضافه کردن برای نقش مربی
+  bool _isAdmin = false; // اضافه کردن برای نقش ادمین
+
   UserModel? get currentUser => _currentUser;
   String? get userId => _supabase.auth.currentUser?.id;
+  bool get isCoach => _isCoach; // گتر برای نقش مربی
+  bool get isAdmin => _isAdmin; // گتر برای نقش ادمین
 
   String? _otpCode;
   String? get otpCode => _otpCode;
@@ -34,6 +39,8 @@ class AuthProvider with ChangeNotifier {
           print('🔑 سشن موجود است، بارگذاری اطلاعات کاربر با ID: $userId');
           _currentUser = await getUserData(userId);
           if (_currentUser != null) {
+            _isCoach = _currentUser!.isCoach;
+            _isAdmin = _currentUser!.isAdmin;
             print('✅ کاربر با موفقیت بارگذاری شد: ${_currentUser!.username}');
           } else {
             print(
@@ -58,6 +65,10 @@ class AuthProvider with ChangeNotifier {
       final session = _supabase.auth.currentSession;
       if (session == null) {
         print('🔑 سشن وجود ندارد.');
+        _currentUser = null;
+        _isCoach = false;
+        _isAdmin = false;
+        notifyListeners();
         return false;
       }
 
@@ -76,6 +87,9 @@ class AuthProvider with ChangeNotifier {
         return false;
       }
 
+      _isCoach = _currentUser!.isCoach;
+      _isAdmin = _currentUser!.isAdmin;
+      notifyListeners();
       print('✅ کاربر با موفقیت بارگذاری شد: ${_currentUser!.username}');
       return true;
     } catch (e) {
@@ -106,22 +120,36 @@ class AuthProvider with ChangeNotifier {
       }
 
       await _otpService.sendOtp(phone);
-      await _supabase.auth.signInWithOtp(phone: phone);
-
-      final hashedPassword = _hashPassword(password);
-      final userId = _uuid.v4();
-
-      _currentUser = UserModel(
-        userId: userId,
+      // ثبت‌نام با OTP و ارسال username در options.data
+      final authResponse = await _supabase.auth.signUp(
         phone: phone,
-        username: username,
-        role: role,
-        isVerified: false,
-        createdAt: DateTime.now(),
-        password: hashedPassword,
+        password: _hashPassword(password), // استفاده از رمز عبور هش‌شده
+        data: {'username': username}, // برای ذخیره خودکار در profiles
       );
 
-      await saveUserData(_currentUser!);
+      final user = authResponse.user;
+      if (user == null) {
+        throw Exception('ثبت‌نام ناموفق بود.');
+      }
+
+      // چون تریگر create_profile_for_new_user داریم، پروفایل خودکار ساخته می‌شه
+      // فقط باید نقش‌ها رو آپدیت کنیم
+      await _supabase
+          .from('profiles')
+          .update({
+            'is_coach': role.toLowerCase() == 'coach',
+            'is_admin': role.toLowerCase() == 'admin',
+          })
+          .eq('id', user.id);
+
+      _currentUser = await getUserData(user.id);
+      if (_currentUser == null) {
+        throw Exception('کاربر در دیتابیس یافت نشد.');
+      }
+
+      _isCoach = _currentUser!.isCoach;
+      _isAdmin = _currentUser!.isAdmin;
+      notifyListeners();
       print('✅ کاربر با موفقیت ثبت شد: $username');
     } catch (e) {
       print('❌ خطا در ثبت‌نام: $e');
@@ -143,14 +171,13 @@ class AuthProvider with ChangeNotifier {
         throw Exception('تأیید OTP ناموفق بود.');
       }
 
-      _currentUser = await getUserDataByPhone(phone);
+      _currentUser = await getUserData(user.id);
       if (_currentUser == null) {
         throw Exception('کاربر یافت نشد.');
       }
 
-      _currentUser = _currentUser!.copyWith(isVerified: true);
-      await saveUserData(_currentUser!);
-
+      _isCoach = _currentUser!.isCoach;
+      _isAdmin = _currentUser!.isAdmin;
       _otpCode = null;
       notifyListeners();
       print('✅ OTP با موفقیت تأیید شد.');
@@ -170,14 +197,12 @@ class AuthProvider with ChangeNotifier {
         final user = session.user;
         final response =
             await _supabase
-                .from('users')
+                .from('profiles')
                 .select()
                 .eq('id', user.id)
                 .maybeSingle();
 
-        if (response == null ||
-            response['username'] == null ||
-            response['role'] == null) {
+        if (response == null || response['username'] == null) {
           Navigator.pushReplacementNamed(context, '/complete-profile');
         } else {
           await _loadCurrentUser(user.id);
@@ -201,22 +226,22 @@ class AuthProvider with ChangeNotifier {
     try {
       print('🔄 ورود با یوزرنیم: $username');
       final userData = await getUserDataByUsername(username);
-      if (userData == null || _hashPassword(password) != userData.password) {
+      if (userData == null) {
         throw Exception('یوزرنیم یا رمز عبور اشتباه است.');
       }
 
-      // به جای استفاده از ایمیل فرضی، مستقیماً کاربر رو تأیید می‌کنیم
-      // و سشن رو به صورت دستی ایجاد می‌کنیم
-      final phone = userData.phone;
-      if (phone.isEmpty) {
-        throw Exception(
-          'شماره موبایل کاربر یافت نشد، لطفاً با گوگل وارد شوید.',
-        );
+      // چون رمز عبور توی Supabase Auth ذخیره می‌شه، باید با Supabase Auth ورود کنیم
+      // ورود با ایمیل یا شماره (بسته به اینکه کاربر با چی ثبت‌نام کرده)
+      final email = userData.email;
+      if (email == null || email.isEmpty) {
+        throw Exception('ایمیل کاربر یافت نشد، لطفاً با گوگل وارد شوید.');
       }
 
-      // ورود با شماره موبایل به جای ایمیل
-      await _supabase.auth.signInWithOtp(phone: phone);
+      await _supabase.auth.signInWithPassword(email: email, password: password);
+
       _currentUser = userData;
+      _isCoach = _currentUser!.isCoach;
+      _isAdmin = _currentUser!.isAdmin;
       notifyListeners();
       print('✅ ورود با موفقیت انجام شد.');
     } catch (e) {
@@ -237,19 +262,22 @@ class AuthProvider with ChangeNotifier {
         throw Exception('کاربر مقداردهی نشده است.');
       }
 
-      _currentUser ??= UserModel(
-        userId: userId,
-        phone: '',
-        username: username,
-        role: role,
-        isVerified: true,
-        createdAt: DateTime.now(),
-        password: '',
-      );
+      await _supabase
+          .from('profiles')
+          .update({
+            'username': username,
+            'is_coach': role.toLowerCase() == 'coach',
+            'is_admin': role.toLowerCase() == 'admin',
+          })
+          .eq('id', userId);
 
-      _currentUser = _currentUser!.copyWith(username: username, role: role);
-      await saveUserData(_currentUser!);
+      _currentUser = await getUserData(userId);
+      if (_currentUser == null) {
+        throw Exception('کاربر یافت نشد.');
+      }
 
+      _isCoach = _currentUser!.isCoach;
+      _isAdmin = _currentUser!.isAdmin;
       notifyListeners();
       print('✅ پروفایل با موفقیت تکمیل شد.');
     } catch (e) {
@@ -261,7 +289,7 @@ class AuthProvider with ChangeNotifier {
   Future<bool> isUsernameUnique(String username) async {
     try {
       final response = await _supabase
-          .from('users')
+          .from('profiles')
           .select()
           .eq('username', username)
           .maybeSingle()
@@ -277,7 +305,7 @@ class AuthProvider with ChangeNotifier {
     try {
       print("📌 Data before upsert: ${user.toMap()}");
       await _supabase
-          .from('users')
+          .from('profiles')
           .upsert(user.toMap())
           .timeout(const Duration(seconds: 10));
       print('✅ اطلاعات کاربر با موفقیت ذخیره شد.');
@@ -290,7 +318,7 @@ class AuthProvider with ChangeNotifier {
   Future<UserModel?> getUserData(String id) async {
     try {
       final response = await _supabase
-          .from('users')
+          .from('profiles')
           .select()
           .eq('id', id)
           .maybeSingle()
@@ -305,7 +333,7 @@ class AuthProvider with ChangeNotifier {
   Future<UserModel?> getUserDataByUsername(String username) async {
     try {
       final response = await _supabase
-          .from('users')
+          .from('profiles')
           .select()
           .eq('username', username)
           .maybeSingle()
@@ -319,13 +347,12 @@ class AuthProvider with ChangeNotifier {
 
   Future<UserModel?> getUserDataByPhone(String phone) async {
     try {
-      final response = await _supabase
-          .from('users')
-          .select()
-          .eq('phone', phone)
-          .maybeSingle()
-          .timeout(const Duration(seconds: 10));
-      return response != null ? UserModel.fromMap(response) : null;
+      // چون شماره تلفن توی auth.users ذخیره می‌شه، باید از اونجا بگیریم
+      final user = _supabase.auth.currentUser;
+      if (user == null || user.phone != phone) {
+        return null;
+      }
+      return await getUserData(user.id);
     } catch (e) {
       print('❌ خطا در دریافت اطلاعات کاربر با شماره: $e');
       return null;
@@ -339,6 +366,8 @@ class AuthProvider with ChangeNotifier {
         await _loadCurrentUser(session.user.id);
       } else {
         _currentUser = null;
+        _isCoach = false;
+        _isAdmin = false;
         notifyListeners();
       }
     } catch (e) {
@@ -354,6 +383,8 @@ class AuthProvider with ChangeNotifier {
         await _loadCurrentUser(session.user.id);
       } else {
         _currentUser = null;
+        _isCoach = false;
+        _isAdmin = false;
         notifyListeners();
       }
     });
@@ -362,12 +393,19 @@ class AuthProvider with ChangeNotifier {
   Future<void> _loadCurrentUser(String id) async {
     try {
       final response = await _supabase
-          .from('users')
+          .from('profiles')
           .select()
           .eq('id', id)
           .maybeSingle()
           .timeout(const Duration(seconds: 10));
       _currentUser = response != null ? UserModel.fromMap(response) : null;
+      if (_currentUser != null) {
+        _isCoach = _currentUser!.isCoach;
+        _isAdmin = _currentUser!.isAdmin;
+      } else {
+        _isCoach = false;
+        _isAdmin = false;
+      }
       notifyListeners();
       print('✅ کاربر بارگذاری شد: ${_currentUser?.username}');
     } catch (e) {
@@ -391,6 +429,9 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> signOut() async {
     await Supabase.instance.client.auth.signOut();
+    _currentUser = null;
+    _isCoach = false;
+    _isAdmin = false;
     notifyListeners();
   }
 }

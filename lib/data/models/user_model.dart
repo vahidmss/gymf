@@ -1,63 +1,79 @@
 class UserModel {
   final String userId;
-  final String phone;
   final String username;
-  final String role;
-  final bool isVerified;
+  final String? email;
+  final String? profileImageUrl;
+  final String? bio;
+  final bool isCoach; // جایگزین role
+  final bool isAdmin; // جایگزین role
   final DateTime createdAt;
-  final String password;
+  final DateTime updatedAt;
 
   UserModel({
     required this.userId,
-    required this.phone,
     required this.username,
-    required this.role,
-    required this.isVerified,
+    this.email,
+    this.profileImageUrl,
+    this.bio,
+    required this.isCoach,
+    required this.isAdmin,
     required this.createdAt,
-    required this.password,
+    required this.updatedAt,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
-      userId: map['id'] as String,
-      phone: map['phone'] as String,
-      username: map['username'] as String,
-      role: map['role'] as String,
-      isVerified: map['is_verified'] as bool,
-      createdAt: DateTime.parse(map['created_at'] as String),
-      password: map['password'] as String,
+      userId: map['id'],
+      username: map['username'] ?? 'نامشخص',
+      email: map['email'],
+      profileImageUrl: map['profile_image_url'],
+      bio: map['bio'],
+      isCoach: map['is_coach'] ?? false,
+      isAdmin: map['is_admin'] ?? false,
+      createdAt: DateTime.parse(
+        map['created_at'] ?? DateTime.now().toIso8601String(),
+      ),
+      updatedAt: DateTime.parse(
+        map['updated_at'] ?? DateTime.now().toIso8601String(),
+      ),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'id': userId,
-      'phone': phone,
       'username': username,
-      'role': role,
-      'is_verified': isVerified,
+      'email': email,
+      'profile_image_url': profileImageUrl,
+      'bio': bio,
+      'is_coach': isCoach,
+      'is_admin': isAdmin,
       'created_at': createdAt.toIso8601String(),
-      'password': password,
+      'updated_at': updatedAt.toIso8601String(),
     };
   }
 
   UserModel copyWith({
     String? userId,
-    String? phone,
     String? username,
-    String? role,
-    bool? isVerified,
+    String? email,
+    String? profileImageUrl,
+    String? bio,
+    bool? isCoach,
+    bool? isAdmin,
     DateTime? createdAt,
-    String? password,
+    DateTime? updatedAt,
   }) {
     return UserModel(
       userId: userId ?? this.userId,
-      phone: phone ?? this.phone,
       username: username ?? this.username,
-      role: role ?? this.role,
-      isVerified: isVerified ?? this.isVerified,
+      email: email ?? this.email,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      bio: bio ?? this.bio,
+      isCoach: isCoach ?? this.isCoach,
+      isAdmin: isAdmin ?? this.isAdmin,
       createdAt: createdAt ?? this.createdAt,
-      password: password ?? this.password,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }

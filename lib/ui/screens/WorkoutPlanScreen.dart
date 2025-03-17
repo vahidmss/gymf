@@ -75,16 +75,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        final TextEditingController _exerciseNameController =
+        final TextEditingController exerciseNameController =
             TextEditingController();
-        int _sets = 3;
-        int? _reps = 10;
-        int? _duration;
-        double? _weight;
-        String _countingType = 'وزن (kg)';
-        String? _notes;
-        ExerciseModel? _selectedExercise;
-        List<WorkoutExercise> _tempExercises = List.from(
+        int sets = 3;
+        int? reps = 10;
+        int? duration;
+        double? weight;
+        String countingType = 'وزن (kg)';
+        String? notes;
+        ExerciseModel? selectedExercise;
+        List<WorkoutExercise> tempExercises = List.from(
           _days[dayIndex].exercises,
         );
 
@@ -130,16 +130,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 (ExerciseModel option) => option.name,
                             onSelected: (ExerciseModel selection) {
                               setState(() {
-                                _selectedExercise = selection;
-                                _exerciseNameController.text = selection.name;
-                                _countingType =
+                                selectedExercise = selection;
+                                exerciseNameController.text = selection.name;
+                                countingType =
                                     selection.countingType ?? 'وزن (kg)';
                                 if (![
                                   'وزن (kg)',
                                   'تایم',
                                   'تعداد',
-                                ].contains(_countingType)) {
-                                  _countingType = 'وزن (kg)';
+                                ].contains(countingType)) {
+                                  countingType = 'وزن (kg)';
                                 }
                               });
                             },
@@ -149,8 +149,8 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                               focusNode,
                               onFieldSubmitted,
                             ) {
-                              _exerciseNameController.addListener(() {
-                                if (_exerciseNameController.text.length >= 3) {
+                              exerciseNameController.addListener(() {
+                                if (exerciseNameController.text.length >= 3) {
                                   setState(() {});
                                 }
                               });
@@ -193,17 +193,17 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                   newExercise is ExerciseModel) {
                                 setState(() {
                                   exerciseProvider.exercises.add(newExercise);
-                                  _selectedExercise = newExercise;
-                                  _exerciseNameController.text =
+                                  selectedExercise = newExercise;
+                                  exerciseNameController.text =
                                       newExercise.name;
-                                  _countingType =
+                                  countingType =
                                       newExercise.countingType ?? 'وزن (kg)';
                                   if (![
                                     'وزن (kg)',
                                     'تایم',
                                     'تعداد',
-                                  ].contains(_countingType)) {
-                                    _countingType = 'وزن (kg)';
+                                  ].contains(countingType)) {
+                                    countingType = 'وزن (kg)';
                                   }
                                 });
                               }
@@ -214,12 +214,12 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    if (_exerciseNameController.text.isNotEmpty &&
-                        _selectedExercise == null &&
+                    if (exerciseNameController.text.isNotEmpty &&
+                        selectedExercise == null &&
                         !exerciseProvider.exercises.any(
                           (exercise) =>
                               exercise.name.toLowerCase() ==
-                              _exerciseNameController.text.toLowerCase(),
+                              exerciseNameController.text.toLowerCase(),
                         ))
                       ElevatedButton(
                         onPressed: () {
@@ -231,16 +231,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 newExercise is ExerciseModel) {
                               setState(() {
                                 exerciseProvider.exercises.add(newExercise);
-                                _selectedExercise = newExercise;
-                                _exerciseNameController.text = newExercise.name;
-                                _countingType =
+                                selectedExercise = newExercise;
+                                exerciseNameController.text = newExercise.name;
+                                countingType =
                                     newExercise.countingType ?? 'وزن (kg)';
                                 if (![
                                   'وزن (kg)',
                                   'تایم',
                                   'تعداد',
-                                ].contains(_countingType)) {
-                                  _countingType = 'وزن (kg)';
+                                ].contains(countingType)) {
+                                  countingType = 'وزن (kg)';
                                 }
                               });
                             }
@@ -261,7 +261,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                         ),
                       ),
                     // پیش‌نمایش اطلاعات تمرین
-                    if (_selectedExercise != null) ...[
+                    if (selectedExercise != null) ...[
                       const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -293,7 +293,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                             ),
                             const SizedBox(height: 5),
                             Text(
-                              'دسته‌بندی: ${_selectedExercise!.category}',
+                              'دسته‌بندی: ${selectedExercise!.category}',
                               style: GoogleFonts.vazirmatn(
                                 color:
                                     _isDarkTheme
@@ -302,9 +302,9 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 fontSize: 12,
                               ),
                             ),
-                            if (_selectedExercise!.targetMuscle != null)
+                            if (selectedExercise!.targetMuscle != null)
                               Text(
-                                'عضله هدف: ${_selectedExercise!.targetMuscle}',
+                                'عضله هدف: ${selectedExercise!.targetMuscle}',
                                 style: GoogleFonts.vazirmatn(
                                   color:
                                       _isDarkTheme
@@ -314,7 +314,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 ),
                               ),
                             Text(
-                              'نوع شمارش: ${_selectedExercise!.countingType ?? 'نامشخص'}',
+                              'نوع شمارش: ${selectedExercise!.countingType ?? 'نامشخص'}',
                               style: GoogleFonts.vazirmatn(
                                 color:
                                     _isDarkTheme
@@ -343,16 +343,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                             IconButton(
                               icon: const Icon(Icons.remove),
                               onPressed:
-                                  _sets > 1
+                                  sets > 1
                                       ? () {
                                         setState(() {
-                                          _sets--;
+                                          sets--;
                                         });
                                       }
                                       : null,
                             ),
                             Text(
-                              '$_sets',
+                              '$sets',
                               style: GoogleFonts.vazirmatn(
                                 color:
                                     _isDarkTheme
@@ -364,7 +364,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                               icon: const Icon(Icons.add),
                               onPressed: () {
                                 setState(() {
-                                  _sets++;
+                                  sets++;
                                 });
                               },
                             ),
@@ -384,7 +384,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                           ),
                         ),
                         DropdownButton<String>(
-                          value: _countingType,
+                          value: countingType,
                           items:
                               ['وزن (kg)', 'تایم', 'تعداد'].map((type) {
                                 return DropdownMenuItem(
@@ -395,14 +395,14 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                           onChanged: (value) {
                             if (value != null) {
                               setState(() {
-                                _countingType = value;
+                                countingType = value;
                               });
                             }
                           },
                         ),
                       ],
                     ),
-                    if (_countingType == 'تعداد')
+                    if (countingType == 'تعداد')
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -420,16 +420,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                               IconButton(
                                 icon: const Icon(Icons.remove),
                                 onPressed:
-                                    _reps != null && _reps! > 1
+                                    reps != null && reps! > 1
                                         ? () {
                                           setState(() {
-                                            _reps = _reps! - 1;
+                                            reps = reps! - 1;
                                           });
                                         }
                                         : null,
                               ),
                               Text(
-                                '${_reps ?? 0}',
+                                '${reps ?? 0}',
                                 style: GoogleFonts.vazirmatn(
                                   color:
                                       _isDarkTheme
@@ -441,7 +441,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 icon: const Icon(Icons.add),
                                 onPressed: () {
                                   setState(() {
-                                    _reps = (_reps ?? 0) + 1;
+                                    reps = (reps ?? 0) + 1;
                                   });
                                 },
                               ),
@@ -449,7 +449,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                           ),
                         ],
                       ),
-                    if (_countingType == 'تایم')
+                    if (countingType == 'تایم')
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -467,16 +467,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                               IconButton(
                                 icon: const Icon(Icons.remove),
                                 onPressed:
-                                    _duration != null && _duration! > 0
+                                    duration != null && duration! > 0
                                         ? () {
                                           setState(() {
-                                            _duration = _duration! - 1;
+                                            duration = duration! - 1;
                                           });
                                         }
                                         : null,
                               ),
                               Text(
-                                '${_duration ?? 0}',
+                                '${duration ?? 0}',
                                 style: GoogleFonts.vazirmatn(
                                   color:
                                       _isDarkTheme
@@ -488,7 +488,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 icon: const Icon(Icons.add),
                                 onPressed: () {
                                   setState(() {
-                                    _duration = (_duration ?? 0) + 1;
+                                    duration = (duration ?? 0) + 1;
                                   });
                                 },
                               ),
@@ -496,7 +496,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                           ),
                         ],
                       ),
-                    if (_countingType == 'وزن (kg)')
+                    if (countingType == 'وزن (kg)')
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -514,16 +514,16 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                               IconButton(
                                 icon: const Icon(Icons.remove),
                                 onPressed:
-                                    _weight != null && _weight! > 0
+                                    weight != null && weight! > 0
                                         ? () {
                                           setState(() {
-                                            _weight = _weight! - 1;
+                                            weight = weight! - 1;
                                           });
                                         }
                                         : null,
                               ),
                               Text(
-                                '${_weight ?? 0}',
+                                '${weight ?? 0}',
                                 style: GoogleFonts.vazirmatn(
                                   color:
                                       _isDarkTheme
@@ -535,7 +535,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                                 icon: const Icon(Icons.add),
                                 onPressed: () {
                                   setState(() {
-                                    _weight = (_weight ?? 0) + 1;
+                                    weight = (weight ?? 0) + 1;
                                   });
                                 },
                               ),
@@ -545,7 +545,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                       ),
                     const SizedBox(height: 10),
                     TextField(
-                      onChanged: (value) => _notes = value,
+                      onChanged: (value) => notes = value,
                       decoration: InputDecoration(
                         labelText: 'یادداشت (اختیاری)',
                         labelStyle: GoogleFonts.vazirmatn(
@@ -577,8 +577,8 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    if (_exerciseNameController.text.isEmpty ||
-                        _selectedExercise == null) {
+                    if (exerciseNameController.text.isEmpty ||
+                        selectedExercise == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('لطفاً یک تمرین معتبر انتخاب کنید!'),
@@ -587,24 +587,23 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
                       return;
                     }
                     final exercise = WorkoutExercise(
-                      exerciseId: _selectedExercise!.id,
-                      name: _selectedExercise!.name,
+                      exerciseId: selectedExercise!.id,
+                      name: selectedExercise!.name,
                       category:
-                          _selectedExercise!
-                              .category, // مستقیم از ExerciseModel
-                      sets: _sets,
-                      reps: _countingType == 'تعداد' ? _reps : null,
-                      duration: _countingType == 'تایم' ? _duration : null,
-                      weight: _countingType == 'وزن (kg)' ? _weight : null,
-                      countingType: _countingType,
-                      notes: _notes,
+                          selectedExercise!.category, // مستقیم از ExerciseModel
+                      sets: sets,
+                      reps: countingType == 'تعداد' ? reps : null,
+                      duration: countingType == 'تایم' ? duration : null,
+                      weight: countingType == 'وزن (kg)' ? weight : null,
+                      countingType: countingType,
+                      notes: notes,
                     );
-                    _tempExercises.add(exercise);
+                    tempExercises.add(exercise);
 
                     this.setState(() {
                       _days[dayIndex] = WorkoutDay(
                         dayName: _days[dayIndex].dayName,
-                        exercises: _tempExercises,
+                        exercises: tempExercises,
                       );
                     });
                     Navigator.pop(context);

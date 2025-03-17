@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:gymf/providers/CoachProvider.dart';
 import 'package:gymf/providers/WorkoutPlanProvider.dart';
 import 'package:gymf/providers/auth_provider.dart';
 import 'package:gymf/providers/exercise_provider.dart';
+import 'package:gymf/ui/screens/AdminCoachApprovalScreen.dart';
 import 'package:gymf/ui/screens/EditExerciseScreen.dart';
 import 'package:gymf/ui/screens/ExerciseListScreen.dart';
+import 'package:gymf/ui/screens/ProfileScreen.dart';
+import 'package:gymf/ui/screens/RegisterAsCoachScreen.dart';
 import 'package:gymf/ui/screens/WorkoutPlanScreen.dart';
 import 'package:gymf/ui/screens/auth/login_screen.dart';
 import 'package:gymf/ui/screens/auth/signup_screen.dart';
@@ -11,6 +15,7 @@ import 'package:gymf/ui/screens/auth/complete_profile_screen.dart';
 import 'package:gymf/ui/screens/dashboard_screen.dart';
 import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
+import 'package:gymf/ui/screens/coaches_screen.dart'; // اضافه کردن CoachesScreen
 import 'package:gymf/data/models/exercise_model.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -102,6 +107,22 @@ class _LoadingAppState extends State<LoadingApp> {
   }
 }
 
+class AppRoutes {
+  static const String login = '/login';
+  static const String signup = '/signup';
+  static const String completeProfile = '/complete-profile';
+  static const String dashboard = '/dashboard';
+  static const String home = '/home';
+  static const String workoutPlan = '/workout-plan';
+  static const String exerciseList = '/exercise-list';
+  static const String submitExercise = '/submit-exercise';
+  static const String editExercise = '/edit-exercise';
+  static const String coaches = '/coaches';
+  static const String profile = '/profile'; // مسیر جدید
+  static const String registerAsCoach = '/register-as-coach'; // مسیر جدید
+  static const String adminCoachApproval = '/admin-coach-approval'; // مسیر جدید
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -116,59 +137,56 @@ class MyApp extends StatelessWidget {
             return authProvider;
           },
         ),
-        ChangeNotifierProvider(
-          create: (context) => ExerciseProvider(context), // اصلاح با context
-        ),
+        ChangeNotifierProvider(create: (context) => ExerciseProvider(context)),
         ChangeNotifierProxyProvider<AuthProvider, WorkoutPlanProvider>(
           create: (context) => WorkoutPlanProvider(context),
           update: (context, auth, previous) {
             if (previous != null) {
               previous.updateAuth(auth);
             }
-            return WorkoutPlanProvider(context)..updateAuth(auth);
+            return previous ?? WorkoutPlanProvider(context)
+              ..updateAuth(auth);
           },
         ),
+        ChangeNotifierProvider(create: (context) => CoachProvider(context)),
       ],
-      child: Builder(
-        builder: (context) {
-          // دسترسی به context بعد از مقداردهی Providerها
-          final exerciseProvider = Provider.of<ExerciseProvider>(
-            context,
-            listen: false,
-          );
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            title: 'Gym App',
-            theme: ThemeData.dark().copyWith(
-              primaryColor: Colors.yellow,
-              colorScheme: ColorScheme.fromSwatch().copyWith(
-                primary: Colors.yellow,
-                secondary: Colors.amber,
-              ),
-            ),
-            home: const AuthWrapper(),
-            routes: {
-              '/login': (context) => const LoginScreen(),
-              '/signup': (context) => const SignupScreen(),
-              '/complete-profile': (context) => const CompleteProfileScreen(),
-              '/dashboard': (context) => DashboardScreen(),
-              '/home': (context) => HomeScreen(),
-              '/workout-plan': (context) => const WorkoutPlanScreen(),
-              '/exercise-list':
-                  (context) => const ExerciseListScreen(), // مسیر جدید
-              '/submit-exercise':
-                  (context) => const ExerciseSubmissionScreen(), // مسیر جدید
-            },
-            onGenerateRoute: (settings) {
-              if (settings.name == '/edit-exercise') {
-                final exercise = settings.arguments as ExerciseModel;
-                return MaterialPageRoute(
-                  builder: (context) => EditExerciseScreen(exercise: exercise),
-                );
-              }
-              return null;
-            },
-          );
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Gym App',
+        theme: ThemeData.dark().copyWith(
+          primaryColor: Colors.yellow,
+          colorScheme: ColorScheme.fromSwatch().copyWith(
+            primary: Colors.yellow,
+            secondary: Colors.amber,
+          ),
+        ),
+        initialRoute: '/',
+        routes: {
+          '/': (context) => const AuthWrapper(),
+          AppRoutes.login: (context) => const LoginScreen(),
+          AppRoutes.signup: (context) => const SignupScreen(),
+          AppRoutes.completeProfile: (context) => const CompleteProfileScreen(),
+          AppRoutes.dashboard: (context) => DashboardScreen(),
+          AppRoutes.home: (context) => HomeScreen(),
+          AppRoutes.workoutPlan: (context) => const WorkoutPlanScreen(),
+          AppRoutes.exerciseList: (context) => const ExerciseListScreen(),
+          AppRoutes.submitExercise:
+              (context) => const ExerciseSubmissionScreen(),
+          AppRoutes.coaches: (context) => const CoachesScreen(),
+          AppRoutes.profile: (context) => const ProfileScreen(), // مسیر جدید
+          AppRoutes.registerAsCoach:
+              (context) => const RegisterAsCoachScreen(), // مسیر جدید
+          AppRoutes.adminCoachApproval:
+              (context) => const AdminCoachApprovalScreen(), // مسیر جدید
+        },
+        onGenerateRoute: (settings) {
+          if (settings.name == AppRoutes.editExercise) {
+            final exercise = settings.arguments as ExerciseModel;
+            return MaterialPageRoute(
+              builder: (context) => EditExerciseScreen(exercise: exercise),
+            );
+          }
+          return null;
         },
       ),
     );
@@ -177,6 +195,23 @@ class MyApp extends StatelessWidget {
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
+
+  Future<void> _loadInitialData(BuildContext context) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final exerciseProvider = Provider.of<ExerciseProvider>(
+      context,
+      listen: false,
+    );
+    final workoutPlanProvider = Provider.of<WorkoutPlanProvider>(
+      context,
+      listen: false,
+    );
+    final coachProvider = Provider.of<CoachProvider>(context, listen: false);
+
+    await exerciseProvider.fetchAllExercises();
+    await workoutPlanProvider.fetchCoachPlans(authProvider.userId ?? '');
+    await coachProvider.fetchCoaches();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +241,7 @@ class AuthWrapper extends StatelessWidget {
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () {
-                      Navigator.pushReplacementNamed(context, '/login');
+                      Navigator.pushReplacementNamed(context, AppRoutes.login);
                     },
                     child: const Text('رفتن به صفحه ورود'),
                   ),
@@ -217,6 +252,10 @@ class AuthWrapper extends StatelessWidget {
         }
         if (snapshot.data == true) {
           print('✅ کاربر وارد شده است، انتقال به داشبورد...');
+          // لود داده‌ها رو بعد از ساخت ویجت انجام بده
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _loadInitialData(context);
+          });
           return const DashboardScreen();
         } else {
           print('🔑 کاربر وارد نشده است، انتقال به صفحه ورود...');

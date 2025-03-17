@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gymf/main.dart';
 import 'package:gymf/providers/auth_provider.dart';
-import 'package:gymf/ui/screens/WorkoutLogScreen.dart';
 import 'package:gymf/ui/screens/ExerciseListScreen.dart';
-import 'package:gymf/ui/screens/WorkoutPlanScreen.dart';
 import 'package:gymf/ui/screens/coaches_screen.dart';
 import 'package:gymf/ui/screens/exercise_submission_screen.dart';
 import 'package:gymf/ui/screens/home_screen.dart';
@@ -68,6 +67,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -84,22 +85,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
             backgroundColor: Colors.transparent,
             appBar: AppBar(
-              title: Text(
-                'مدرسه بدنسازی',
-                style: GoogleFonts.vazirmatn(
-                  textStyle: TextStyle(
-                    color: Colors.yellow,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 24,
-                    shadows: [
-                      Shadow(color: Colors.black54, blurRadius: 5),
-                      Shadow(
-                        color: Colors.yellow.withOpacity(0.5),
-                        blurRadius: 10,
+              title: Consumer<AuthProvider>(
+                builder: (context, authProvider, child) {
+                  return Text(
+                    authProvider.userId != null
+                        ? 'خوش آمدید!'
+                        : 'مدرسه بدنسازی',
+                    style: GoogleFonts.vazirmatn(
+                      textStyle: TextStyle(
+                        color: Colors.yellow,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 24,
+                        shadows: [
+                          Shadow(color: Colors.black54, blurRadius: 5),
+                          Shadow(
+                            color: Colors.yellow.withOpacity(0.5),
+                            blurRadius: 10,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
               backgroundColor: Colors.transparent,
               elevation: 0,
@@ -178,12 +185,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
+                          Navigator.pushNamed(
                             context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => const ExerciseSubmissionScreen(),
-                            ),
+                            AppRoutes.submitExercise,
                           );
                         },
                       ),
@@ -198,12 +202,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const WorkoutPlanScreen(),
-                            ),
-                          );
+                          Navigator.pushNamed(context, AppRoutes.workoutPlan);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.fitness_center,
+                          color: Colors.greenAccent,
+                        ),
+                        title: Text(
+                          "لیست مربیان",
+                          style: GoogleFonts.vazirmatn(color: Colors.white),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _onTabTapped(
+                            2,
+                          ); // به جای push، از نویگیشن پایین استفاده می‌کنیم
                         },
                       ),
                       ListTile(
@@ -217,14 +232,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(
+                          Navigator.pushNamed(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => const WorkoutLogScreen(),
-                            ),
-                          );
+                            '/workout-log',
+                          ); // فرض می‌کنیم مسیر تعریف شده
                         },
                       ),
+                      if (authProvider.isCoach == false) // فقط برای شاگردها
+                        ListTile(
+                          leading: const Icon(
+                            Icons.add_moderator,
+                            color: Colors.orangeAccent,
+                          ),
+                          title: Text(
+                            "ثبت‌نام به‌عنوان مربی",
+                            style: GoogleFonts.vazirmatn(color: Colors.white),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.registerAsCoach,
+                            );
+                          },
+                        ),
+                      if (authProvider.isAdmin == true) // فقط برای ادمین
+                        ListTile(
+                          leading: const Icon(
+                            Icons.admin_panel_settings,
+                            color: Colors.purpleAccent,
+                          ),
+                          title: Text(
+                            "تأیید مربی‌ها",
+                            style: GoogleFonts.vazirmatn(color: Colors.white),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.adminCoachApproval,
+                            );
+                          },
+                        ),
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.red),
                         title: Text(
